@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Posture Monitor</title>
+</head>
+<body>
+
+  <h1>Posture Monitor</h1>
+
+  <h2 id="status">Loading...</h2>
+  <h3 id="sessionState">No session running</h3>
+
+  <button id="startBtn">Start Session</button>
+  <button id="endBtn">End Session</button>
+
+
+  <script src="config.js"></script>
+
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+    import { getDatabase, ref, onValue, set, update } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+
+  
+    const firebaseConfig = window.FIREBASE_CONFIG;
+
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+
+  
+    const statusRef = ref(db, "current/status");
+
+    onValue(statusRef, (snapshot) => {
+      const data = snapshot.val();
+      document.getElementById("status").innerText = data || "No data yet";
+    });
+
+ 
+    const controlRef = ref(db, "control");
+
+    onValue(controlRef, (snapshot) => {
+      const data = snapshot.val();
+
+      if (data && data.active) {
+        document.getElementById("sessionState").innerText =
+          "Session running: " + data.sessionId;
+      } else {
+        document.getElementById("sessionState").innerText =
+          "No session running";
+      }
+    });
+
+  
+    document.getElementById("startBtn").addEventListener("click", async () => {
+      const sessionId = "session_" + Date.now();
+
+      await set(ref(db, "control"), {
+        active: true,
+        sessionId: sessionId
+      });
+
+      await set(ref(db, "sessions/" + sessionId), {
+        startedAt: Date.now(),
+        endedAt: null,
+        latestStatus: "UNKNOWN"
+      });
+    });
+
+   
+    document.getElementById("endBtn").addEventListener("click", async () => {
+      let activeSessionId = null;
+
+      await new Promise((resolve) => {
+        onValue(controlRef, (snapshot) => {
+          const data = snapshot.val();
+          if (data && data.sessionId) {
+            activeSessionId = data.sessionId;
+          }
+          resolve();
+        }, { onlyOnce: true });
+      });
+
+      if (activeSessionId) {
+        await update(ref(db, "sessions/" + activeSessionId), {
+          endedAt: Date.now()
+        });
+      }
+
+      await set(ref(db, "control"), {
+        active: false,
+        sessionId: ""
+      });
+    });
+
+  </script>
+
+</body>
+</html>
