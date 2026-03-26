@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BackTrack</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --cream:    #F2EDE3;
+      --sage:     #8A9E7B;
+      --sage-dk:  #6B7D60;
+      --sage-lt:  #C4D3B9;
+      --amber:    #E8963A;
+      --amber-lt: #F5C878;
+      --green:    #5BA668;
+      --red:      #C94F42;
+      --text:     #2E2B26;
+      --text-muted: #7A7570;
+      --card-bg:  #FFFFFF;
+      --border:   rgba(0,0,0,0.10);
+    }
+
+    body {
+      background: var(--cream);
+      font-family: 'DM Sans', sans-serif;
+      color: var(--text);
+      min-height: 100vh;
+      padding: 2rem 1rem;
+    }
+
+    .app {
+      max-width: 720px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+    }
+
+    /* ── HEADER ── */
+    .header {
+      text-align: center;
+      animation: fadeDown 0.5s ease both;
+    }
+    .logo {
+      font-family: 'Playfair Display', serif;
+      font-size: 3.2rem;
+      letter-spacing: 0.08em;
+      color: var(--text);
+      line-height: 1;
+    }
+    .subtitle {
+      font-size: 0.75rem;
+      letter-spacing: 0.25em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      margin-top: 0.25rem;
+    }
+
+    /* ── CARD ── */
+    .card {
+      background: var(--card-bg);
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      overflow: hidden;
+      animation: fadeUp 0.5s ease both;
+    }
+    .card:nth-child(2) { animation-delay: 0.08s; }
+    .card:nth-child(3) { animation-delay: 0.16s; }
+
+    .card-header {
+      background: var(--sage);
+      padding: 0.6rem 1.25rem;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0;
+    }
+    .card-header-label {
+      font-size: 0.65rem;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: rgba(255,255,255,0.75);
+      margin-bottom: 0.2rem;
+    }
+    .card-header-value {
+      font-size: 1rem;
+      font-weight: 500;
+      color: #fff;
+    }
+    .card-header-right {
+      text-align: right;
+    }
+
+    /* Live rating badge */
+    .rating-row {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .rating-pill {
+      font-size: 0.9rem;
+      font-weight: 600;
+      padding: 0.15rem 0.6rem;
+      border-radius: 999px;
+      transition: background 0.4s, color 0.4s;
+    }
+    .rating-pill.good  { background: rgba(91,166,104,0.22); color: #3d8a4e; }
+    .rating-pill.okay  { background: rgba(232,150,58,0.22); color: #b06a10; }
+    .rating-pill.poor  { background: rgba(201,79,66,0.22);  color: #9b2b20; }
+
+    .slash { color: rgba(255,255,255,0.4); font-size: 0.85rem; }
+
+    /* ── STATUS INDICATOR DOT ── */
+    .live-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      display: inline-block;
+      transition: background 0.4s;
+    }
+    .live-dot.good { background: var(--green); box-shadow: 0 0 0 3px rgba(91,166,104,0.3); }
+    .live-dot.okay { background: var(--amber); box-shadow: 0 0 0 3px rgba(232,150,58,0.3); }
+    .live-dot.poor { background: var(--red);   box-shadow: 0 0 0 3px rgba(201,79,66,0.3); animation: pulse 1s infinite; }
+
+    @keyframes pulse {
+      0%,100% { box-shadow: 0 0 0 3px rgba(201,79,66,0.3); }
+      50%      { box-shadow: 0 0 0 6px rgba(201,79,66,0.1); }
+    }
+
+    /* ── TABS ── */
+    .tabs {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      border-bottom: 1px solid var(--border);
+    }
+    .tab {
+      padding: 0.65rem 0.5rem;
+      text-align: center;
+      font-size: 0.72rem;
+      font-weight: 500;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      cursor: pointer;
+      border-bottom: 3px solid transparent;
+      transition: color 0.2s, border-color 0.2s, background 0.2s;
+      user-select: none;
+    }
+    .tab:hover { background: rgba(0,0,0,0.03); }
+    .tab.active {
+      color: var(--amber);
+      border-bottom-color: var(--amber);
+      background: rgba(232,150,58,0.06);
+    }
+
+    /* ── CHART AREA ── */
+    .chart-wrap {
+      padding: 1rem 1.25rem 1.25rem;
+    }
+    .chart-container {
+      position: relative;
+      width: 100%;
+      height: 230px;
+    }
+    .chart-summary {
+      text-align: center;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      margin-top: 0.75rem;
+      font-style: italic;
+    }
+    .chart-summary span { color: var(--text); font-weight: 500; }
+
+    /* ── INSIGHTS ── */
+    .insights-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1rem;
+      padding: 1.25rem;
+    }
+    .insight-card {
+      background: var(--cream);
+      border-radius: 10px;
+      padding: 1rem;
+      border: 1px solid var(--border);
+      text-align: center;
+    }
+    .insight-val {
+      font-size: 1.8rem;
+      font-weight: 600;
+      color: var(--text);
+      line-height: 1;
+    }
+    .insight-label {
+      font-size: 0.68rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      margin-top: 0.35rem;
+    }
+
+    /* ── TIME OF DAY BAR ── */
+    .tod-section {
+      padding: 0 1.25rem 1.25rem;
+    }
+    .tod-title {
+      font-size: 0.7rem;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      margin-bottom: 0.6rem;
+    }
+    .tod-bars {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 0.5rem;
+      align-items: end;
+    }
+    .tod-bar-wrap {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.3rem;
+    }
+    .tod-bar-bg {
+      width: 100%;
+      height: 60px;
+      background: var(--cream);
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      display: flex;
+      align-items: flex-end;
+      overflow: hidden;
+    }
+    .tod-bar-fill {
+      width: 100%;
+      border-radius: 5px;
+      transition: height 0.6s ease;
+    }
+    .tod-bar-label { font-size: 0.68rem; color: var(--text-muted); }
+    .tod-bar-pct   { font-size: 0.72rem; font-weight: 600; color: var(--text); }
+
+    /* ── ANIMATIONS ── */
+    @keyframes fadeDown {
+      from { opacity: 0; transform: translateY(-12px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(12px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ── FOOTER / WEBSOCKET NOTE ── */
+    .footer-note {
+      text-align: center;
+      font-size: 0.7rem;
+      color: var(--text-muted);
+      padding-bottom: 1rem;
+      opacity: 0.7;
+    }
+    .ws-badge {
+      display: inline-block;
+      background: rgba(138,158,123,0.15);
+      color: var(--sage-dk);
+      font-size: 0.65rem;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      padding: 0.2rem 0.5rem;
+      border-radius: 4px;
+      margin-bottom: 0.3rem;
+    }
+  </style>
+</head>
+<body>
+<div class="app">
+
+  <!-- HEADER -->
+  <div class="header">
+    <div class="logo">BACKTRACK</div>
+    <div class="subtitle">Posture Intelligence</div>
+  </div>
+
+  <!-- SESSION STATUS CARD -->
+  <div class="card" id="session-card">
+    <div class="card-header">
+      <div>
+        <div class="card-header-label">Live Rating</div>
+        <div class="rating-row">
+          <span class="live-dot good" id="live-dot"></span>
+          <span class="rating-pill good" id="rating-pill" style="background:rgba(255,255,255,0.18); color:#fff;">GOOD</span>
+        </div>
+      </div>
+      <div class="card-header-right">
+        <div class="card-header-label">Duration</div>
+        <div class="card-header-value" id="timer-display">00:00</div>
+      </div>
+    </div>
+
+    <!-- TABS -->
+    <div class="tabs">
+      <div class="tab active" onclick="switchTab('current', this)">Current</div>
+      <div class="tab" onclick="switchTab('day', this)">Day</div>
+      <div class="tab" onclick="switchTab('week', this)">Week</div>
+      <div class="tab" onclick="switchTab('month', this)">Month</div>
+    </div>
+
+    <!-- CHART -->
+    <div class="chart-wrap">
+      <div class="chart-container">
+        <canvas id="postureChart"></canvas>
+      </div>
+      <div class="chart-summary" id="chart-summary">
+        Your posture has <span id="summary-trend">improved</span> over the past session.
+      </div>
+    </div>
+  </div>
+
+  <!-- INSIGHTS CARD -->
+  <div class="card">
+    <div class="card-header" style="grid-template-columns: 1fr;">
+      <div class="card-header-label" style="margin-bottom:0;">Session Insights</div>
+    </div>
+    <div class="insights-grid">
+      <div class="insight-card">
+        <div class="insight-val" id="sessions-count">7</div>
+        <div class="insight-label">Sessions Today</div>
+      </div>
+      <div class="insight-card">
+        <div class="insight-val" style="color:var(--green);" id="good-pct">62%</div>
+        <div class="insight-label">Good Posture</div>
+      </div>
+      <div class="insight-card">
+        <div class="insight-val" id="streak-val">14</div>
+        <div class="insight-label">Day Streak</div>
+      </div>
+    </div>
+
+    <!-- TIME OF DAY -->
+    <div class="tod-section">
+      <div class="tod-title">Best posture time of day</div>
+      <div class="tod-bars" id="tod-bars">
+        <!-- rendered by JS -->
+      </div>
+    </div>
+  </div>
+
+  <div class="footer-note">
+    <div class="ws-badge">WebSocket Ready</div><br>
+    Connect <code>socket.on('posture', handler)</code> to go live with Firebase
+  </div>
+
+</div>
+
+<!-- Chart.js -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script>
+
+/* ════════════════════════════════════════
+   MOCK DATA  — swap these with Firebase / WebSocket events
+   ════════════════════════════════════════ */
+
+const RATINGS = { GOOD: 2, OKAY: 1, POOR: 0 };
+
+// Simulated live state (replace with socket.on('posture', ...) data)
+let liveState = { rating: 'GOOD', sessionStart: Date.now() };
+
+// Per-tab scatter data: { x: seconds/minutes/hours, y: 0|1|2 }
+const mockData = {
+  current: generateSession(40, 'current'),
+  day:     generateSession(80, 'day'),
+  week:    generateSession(120, 'week'),
+  month:   generateSession(200, 'month'),
+};
+
+function generateSession(n, tab) {
+  const points = [];
+  let rating = 2;
+  const maxX = tab === 'current' ? 30 : tab === 'day' ? 720 : tab === 'week' ? 168 : 720;
+  for (let i = 0; i < n; i++) {
+    rating += (Math.random() - 0.5) * 1.2;
+    rating = Math.max(0, Math.min(2, rating));
+    points.push({ x: parseFloat(((i / n) * maxX).toFixed(1)), y: parseFloat(rating.toFixed(2)) });
+  }
+  return points;
+}
+
+/* ════════════════════════════════════════
+   TIMER
+   ════════════════════════════════════════ */
+function updateTimer() {
+  const elapsed = Math.floor((Date.now() - liveState.sessionStart) / 1000);
+  const m = String(Math.floor(elapsed / 60)).padStart(2, '0');
+  const s = String(elapsed % 60).padStart(2, '0');
+  document.getElementById('timer-display').textContent = `${m}:${s}`;
+}
+setInterval(updateTimer, 1000);
+
+/* ════════════════════════════════════════
+   LIVE RATING UI
+   ════════════════════════════════════════ */
+function applyRating(rating) {
+  const dot  = document.getElementById('live-dot');
+  const pill = document.getElementById('rating-pill');
+  const cls  = rating.toLowerCase();
+
+  dot.className  = `live-dot ${cls}`;
+  pill.className = `rating-pill ${cls}`;
+  pill.textContent = rating;
+
+  // Update insights good%
+  const pcts = { GOOD: '62%', OKAY: '44%', POOR: '31%' };
+  document.getElementById('good-pct').textContent = pcts[rating];
+}
+
+// Simulate live rating changes (replace body with socket.on('posture', e => applyRating(e.rating)))
+const ratingSequence = ['GOOD','GOOD','OKAY','GOOD','OKAY','POOR','OKAY','GOOD'];
+let ratingIdx = 0;
+setInterval(() => {
+  ratingIdx = (ratingIdx + 1) % ratingSequence.length;
+  applyRating(ratingSequence[ratingIdx]);
+}, 4000);
+applyRating(liveState.rating);
+
+/* ════════════════════════════════════════
+   CHART
+   ════════════════════════════════════════ */
+const ctx = document.getElementById('postureChart').getContext('2d');
+
+const axisLabels = { 0: 'poor', 1: 'okay', 2: 'good' };
+
+const dotColors = (ctx) => {
+  const y = ctx.parsed.y;
+  if (y >= 1.5) return '#5BA668';
+  if (y >= 0.75) return '#E8963A';
+  return '#C94F42';
+};
+
+const chart = new Chart(ctx, {
+  type: 'scatter',
+  data: {
+    datasets: [{
+      data: mockData.current,
+      pointBackgroundColor: dotColors,
+      pointBorderColor: 'transparent',
+      pointRadius: 5,
+      pointHoverRadius: 7,
+    }]
+  },
+  options: {
+    responsive: true,
+    maintainAspectRatio: false,
+    animation: { duration: 400 },
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        callbacks: {
+          label: (ctx) => {
+            const y = ctx.parsed.y;
+            const label = y >= 1.5 ? 'Good' : y >= 0.75 ? 'Okay' : 'Poor';
+            return ` ${label} posture`;
+          }
+        }
+      }
+    },
+    scales: {
+      x: {
+        type: 'linear',
+        min: 0,
+        grid: { color: 'rgba(0,0,0,0.05)' },
+        ticks: {
+          color: '#7A7570',
+          font: { family: 'DM Sans', size: 10 },
+          callback: (v) => `${v}m`
+        },
+        title: {
+          display: true,
+          text: 'time (min)',
+          color: '#7A7570',
+          font: { family: 'DM Sans', size: 10 }
+        }
+      },
+      y: {
+        min: -0.2,
+        max: 2.2,
+        grid: {
+          color: (ctx) => ctx.tick.value === 1 ? 'rgba(0,0,0,0.12)' : 'rgba(0,0,0,0.04)',
+        },
+        ticks: {
+          stepSize: 1,
+          color: '#7A7570',
+          font: { family: 'DM Sans', size: 10 },
+          callback: (v) => axisLabels[v] ?? ''
+        }
+      }
+    }
+  }
+});
+
+/* ════════════════════════════════════════
+   TAB SWITCHING
+   ════════════════════════════════════════ */
+const tabLabels = {
+  current: { xLabel: 'time (min)', xSuffix: 'm', trend: 'improved' },
+  day:     { xLabel: 'time (min)', xSuffix: 'm', trend: 'worsened slightly' },
+  week:    { xLabel: 'time (hr)',  xSuffix: 'h', trend: 'improved' },
+  month:   { xLabel: 'time (hr)', xSuffix: 'h', trend: 'held steady' },
+};
+
+function switchTab(tab, el) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+
+  const cfg = tabLabels[tab];
+  chart.data.datasets[0].data = mockData[tab];
+  chart.options.scales.x.title.text = cfg.xLabel;
+  chart.options.scales.x.ticks.callback = (v) => `${v}${cfg.xSuffix}`;
+  chart.update();
+
+  document.getElementById('summary-trend').textContent = cfg.trend;
+}
+
+/* ════════════════════════════════════════
+   TIME OF DAY BARS
+   ════════════════════════════════════════ */
+const todData = [
+  { label: 'Morning', pct: 78, color: '#5BA668' },
+  { label: 'Midday',  pct: 55, color: '#E8963A' },
+  { label: 'Evening', pct: 47, color: '#E8963A' },
+  { label: 'Night',   pct: 30, color: '#C94F42' },
+];
+
+const todContainer = document.getElementById('tod-bars');
+todData.forEach(d => {
+  todContainer.innerHTML += `
+    <div class="tod-bar-wrap">
+      <div class="tod-bar-pct">${d.pct}%</div>
+      <div class="tod-bar-bg">
+        <div class="tod-bar-fill" style="height:${d.pct}%; background:${d.color}; opacity:0.75;"></div>
+      </div>
+      <div class="tod-bar-label">${d.label}</div>
+    </div>`;
+});
+
+/* ════════════════════════════════════════
+   WEBSOCKET HOOK — uncomment & configure when ready
+   ════════════════════════════════════════ */
+/*
+const socket = io('https://YOUR_NGROK_OR_SERVER_URL');
+
+socket.on('connect', () => {
+  console.log('[BackTrack] Connected');
+  liveState.sessionStart = Date.now();
+});
+
+socket.on('posture', (data) => {
+  // data = { rating: 'GOOD'|'OKAY'|'POOR', timestamp: number }
+  applyRating(data.rating);
+
+  // Add point to current-session chart data
+  const elapsed = (data.timestamp - liveState.sessionStart) / 60000;
+  const y = data.rating === 'GOOD' ? 2 : data.rating === 'OKAY' ? 1 : 0;
+  mockData.current.push({ x: parseFloat(elapsed.toFixed(2)), y });
+
+  // Re-render if on current tab
+  if (document.querySelector('.tab.active').textContent.trim() === 'Current') {
+    chart.data.datasets[0].data = mockData.current;
+    chart.update('none');
+  }
+});
+
+socket.on('disconnect', () => console.log('[BackTrack] Disconnected'));
+*/
+
+</script>
+</body>
+</html>
