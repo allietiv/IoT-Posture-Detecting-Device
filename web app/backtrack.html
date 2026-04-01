@@ -349,8 +349,8 @@
   </div>
 
   <div class="footer-note">
-    <div class="ws-badge">WebSocket Ready</div><br>
-    Connect <code>socket.on('posture', handler)</code> to go live with Firebase
+    <div class="ws-badge" id="fb-badge">Connecting to Firebase…</div><br>
+    <span id="fb-status-note">Listening on <code>posture/status</code></span>
   </div>
 
 </div>
@@ -416,13 +416,7 @@ function applyRating(rating) {
   document.getElementById('good-pct').textContent = pcts[rating];
 }
 
-// Simulate live rating changes (replace body with socket.on('posture', e => applyRating(e.rating)))
-const ratingSequence = ['GOOD','GOOD','OKAY','GOOD','OKAY','POOR','OKAY','GOOD'];
-let ratingIdx = 0;
-setInterval(() => {
-  ratingIdx = (ratingIdx + 1) % ratingSequence.length;
-  applyRating(ratingSequence[ratingIdx]);
-}, 4000);
+// Initial placeholder until Firebase responds
 applyRating(liveState.rating);
 
 /* ════════════════════════════════════════
@@ -546,35 +540,74 @@ todData.forEach(d => {
 });
 
 /* ════════════════════════════════════════
-   WEBSOCKET HOOK — uncomment & configure when ready
+   FIREBASE — normalise value from ESP32
+   "GOOD" → GOOD, "OKAY" → OKAY,
+   "BAD" / "POOR" → POOR  (handles both naming conventions)
    ════════════════════════════════════════ */
-/*
-const socket = io('https://YOUR_NGROK_OR_SERVER_URL');
+function normaliseRating(raw) {
+  if (!raw) return 'POOR';
+  const v = String(raw).trim().toUpperCase();
+  if (v === 'GOOD') return 'GOOD';
+  if (v === 'OKAY') return 'OKAY';
+  return 'POOR'; // catches "BAD", "POOR", unknown
+}
 
-socket.on('connect', () => {
-  console.log('[BackTrack] Connected');
-  liveState.sessionStart = Date.now();
-});
+</script>
 
-socket.on('posture', (data) => {
-  // data = { rating: 'GOOD'|'OKAY'|'POOR', timestamp: number }
-  applyRating(data.rating);
+<!-- Firebase SDK (ES module — loads after Chart.js UMD above) -->
+<script type="module">
+  import { initializeApp }              from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+  import { getDatabase, ref, onValue }  from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
 
-  // Add point to current-session chart data
-  const elapsed = (data.timestamp - liveState.sessionStart) / 60000;
-  const y = data.rating === 'GOOD' ? 2 : data.rating === 'OKAY' ? 1 : 0;
-  mockData.current.push({ x: parseFloat(elapsed.toFixed(2)), y });
+  const firebaseConfig = {
+    apiKey:            "AIzaSyDWtlCbBBEuB-d34Q76RpQ-WMwrGjo8fxM",
+    authDomain:        "iot-posture-monitoring.firebaseapp.com",
+    databaseURL:       "https://iot-posture-monitoring-default-rtdb.firebaseio.com",
+    projectId:         "iot-posture-monitoring",
+    storageBucket:     "iot-posture-monitoring.firebasestorage.app",
+    messagingSenderId: "326147016174",
+    appId:             "1:326147016174:web:842f22580aff6061b7baff",
+  };
 
-  // Re-render if on current tab
-  if (document.querySelector('.tab.active').textContent.trim() === 'Current') {
-    chart.data.datasets[0].data = mockData.current;
-    chart.update('none');
-  }
-});
+  const app = initializeApp(firebaseConfig);
+  const db  = getDatabase(app);
 
-socket.on('disconnect', () => console.log('[BackTrack] Disconnected'));
-*/
+  const badge = document.getElementById('fb-badge');
+  const note  = document.getElementById('fb-status-note');
 
+  onValue(ref(db, 'posture/status'), (snapshot) => {
+    const raw    = snapshot.val();
+    const rating = normaliseRating(raw);
+
+    // Update live indicator + pill
+    applyRating(rating);
+
+    // Append a point to the current-session chart
+    const elapsed = parseFloat(((Date.now() - liveState.sessionStart) / 60000).toFixed(2));
+    const y = rating === 'GOOD' ? 2 : rating === 'OKAY' ? 1 : 0;
+    mockData.current.push({ x: elapsed, y });
+
+    // Trim to last 200 points so it doesn't grow forever
+    if (mockData.current.length > 200) mockData.current.shift();
+
+    // Re-render chart if on Current tab
+    if (document.querySelector('.tab.active').textContent.trim().toLowerCase() === 'current') {
+      chart.data.datasets[0].data = mockData.current;
+      chart.update('none');
+    }
+
+    // Update footer badge
+    badge.textContent = 'Firebase Live';
+    badge.style.background = 'rgba(91,166,104,0.18)';
+    badge.style.color = '#3d8a4e';
+    note.innerHTML = `Last value from ESP32: <strong>${raw}</strong> → showing as <strong>${rating}</strong>`;
+
+  }, (error) => {
+    badge.textContent = 'Firebase Error';
+    badge.style.background = 'rgba(201,79,66,0.15)';
+    badge.style.color = '#9b2b20';
+    note.textContent = error.message;
+  });
 </script>
 </body>
 </html>
