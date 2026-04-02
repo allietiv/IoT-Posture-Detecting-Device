@@ -575,39 +575,75 @@ function normaliseRating(raw) {
   const badge = document.getElementById('fb-badge');
   const note  = document.getElementById('fb-status-note');
 
-  onValue(ref(db, 'posture/status'), (snapshot) => {
-    const raw    = snapshot.val();
-    const rating = normaliseRating(raw);
+const liveRef = ref(db, 'live');
+const controlRef = ref(db, 'control');
 
-    // Update live indicator + pill
-    applyRating(rating);
+let activeSessionId = "";
 
-    // Append a point to the current-session chart
-    const elapsed = parseFloat(((Date.now() - liveState.sessionStart) / 60000).toFixed(2));
-    const y = rating === 'GOOD' ? 2 : rating === 'OKAY' ? 1 : 0;
-    mockData.current.push({ x: elapsed, y });
+onValue(controlRef, (snapshot) => {
+  const control = snapshot.val() || {};
+  activeSessionId = control.sessionId || "";
 
-    // Trim to last 200 points so it doesn't grow forever
-    if (mockData.current.length > 200) mockData.current.shift();
-
-    // Re-render chart if on Current tab
-    if (document.querySelector('.tab.active').textContent.trim().toLowerCase() === 'current') {
-      chart.data.datasets[0].data = mockData.current;
-      chart.update('none');
-    }
-
-    // Update footer badge
+  if (control.active && activeSessionId) {
     badge.textContent = 'Firebase Live';
     badge.style.background = 'rgba(91,166,104,0.18)';
     badge.style.color = '#3d8a4e';
-    note.innerHTML = `Last value from ESP32: <strong>${raw}</strong> → showing as <strong>${rating}</strong>`;
+    note.innerHTML = `Active session: <strong>${activeSessionId}</strong>`;
+  } else {
+    note.textContent = 'No active session';
+  }
 
-  }, (error) => {
-    badge.textContent = 'Firebase Error';
-    badge.style.background = 'rgba(201,79,66,0.15)';
-    badge.style.color = '#9b2b20';
-    note.textContent = error.message;
-  });
+  if (activeSessionId) {
+    const sessionRef = ref(db, `sessions_live/${activeSessionId}`);
+    onValue(sessionRef, (sessionSnap) => {
+      const session = sessionSnap.val() || {};
+
+      document.getElementById('good-pct').textContent =
+        `${session.goodPercentage ?? 0}%`;
+
+      document.getElementById('sessions-count').textContent =
+        (session.totalReadings ?? 0).toString();
+    });
+  }
+});
+
+onValue(liveRef, (snapshot) => {
+  const live = snapshot.val();
+
+  if (!live) {
+    note.textContent = 'No live data yet';
+    return;
+  }
+
+  const rawStatus = live.status || 'BAD';
+  const rating = normaliseRating(rawStatus);
+
+  applyRating(rating);
+
+  const durationSeconds = live.durationSeconds || 0;
+  const m = String(Math.floor(durationSeconds / 60)).padStart(2, '0');
+  const s = String(durationSeconds % 60).padStart(2, '0');
+  document.getElementById('timer-display').textContent = `${m}:${s}`;
+
+  const xMinutes = parseFloat((durationSeconds / 60).toFixed(2));
+  const y = rating === 'GOOD' ? 2 : rating === 'OKAY' ? 1 : 0;
+
+  mockData.current.push({ x: xMinutes, y });
+  if (mockData.current.length > 200) mockData.current.shift();
+
+  if (document.querySelector('.tab.active').textContent.trim().toLowerCase() === 'current') {
+    chart.data.datasets[0].data = mockData.current;
+    chart.update('none');
+  }
+
+  note.innerHTML =
+    `Status: <strong>${live.status}</strong> | Score: <strong>${live.score ?? 0}</strong> | Session: <strong>${live.sessionId || 'none'}</strong>`;
+}, (error) => {
+  badge.textContent = 'Firebase Error';
+  badge.style.background = 'rgba(201,79,66,0.15)';
+  badge.style.color = '#9b2b20';
+  note.textContent = error.message;
+});
 </script>
 </body>
 </html>

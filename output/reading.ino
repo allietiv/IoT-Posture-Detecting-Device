@@ -1,8 +1,16 @@
 #include <WiFi.h>
+#include <WiFiClientSecure.h>
+#include <HTTPClient.h>
 #include <WebServer.h>
 
-const char* ssid = "PostureESP";
-const char* password = "12345678";
+const char* apSSID = "PostureESP";
+const char* apPassword = "12345678";
+
+
+const char* internetSSID = "ufdevice";
+const char* internetPassword = "gogators";
+
+const String firebaseBase = "https://iot-posture-monitoring-default-rtdb.firebaseio.com";
 
 WebServer server(80);
 
@@ -12,9 +20,7 @@ const int buzzerPin = 27;
 unsigned long lastBuzzToggle = 0;
 bool buzzerState = false;
 
-// ----------------------------
-// Schema state
-// ----------------------------
+
 struct ControlState {
   bool active = false;
   String sessionId = "";
@@ -55,9 +61,66 @@ ControlState controlState;
 LiveState liveState;
 SessionLiveState sessionState;
 
-// ----------------------------
-// Helpers
-// ----------------------------
+
+String httpsGET(const String& path) {
+  WiFiClientSecure client;
+  client.setInsecure();
+
+  HTTPClient https;
+  String url = firebaseBase + path + ".json";
+
+  https.begin(client, url);
+  int httpCode = https.GET();
+
+  String payload = "";
+  if (httpCode > 0) {
+    payload = https.getString();
+  }
+
+  https.end();
+  return payload;
+}
+
+void httpsPUT(const String& path, const String& json) {
+  WiFiClientSecure client;
+  client.setInsecure();
+
+  HTTPClient https;
+  String url = firebaseBase + path + ".json";
+
+  https.begin(client, url);
+  https.addHeader("Content-Type", "application/json");
+  https.PUT(json);
+  https.end();
+}
+
+void httpsPATCH(const String& path, const String& json) {
+  WiFiClientSecure client;
+  client.setInsecure();
+
+  HTTPClient https;
+  String url = firebaseBase + path + ".json";
+
+  https.begin(client, url);
+  https.addHeader("Content-Type", "application/json");
+  https.PATCH(json);
+  https.end();
+}
+
+void httpsPOST(const String& path, const String& json) {
+  WiFiClientSecure client;
+  client.setInsecure();
+
+  HTTPClient https;
+  String url = firebaseBase + path + ".json";
+
+  https.begin(client, url);
+  https.addHeader("Content-Type", "application/json");
+  https.POST(json);
+  https.end();
+}
+
+
 String generateSessionId() {
   return "session_" + String(millis());
 }
@@ -67,6 +130,52 @@ int statusToScore(const String& status) {
   if (status == "OKAY") return 60;
   if (status == "BAD") return 30;
   return 0;
+}
+
+void updateGoodPercentage() {
+  if (sessionState.totalReadings == 0) {
+    sessionState.goodPercentage = 0;
+  } else {
+    sessionState.goodPercentage =
+      (sessionState.goodCount * 100) / sessionState.totalReadings;
+  }
+}
+
+void addTimelinePoint(const String& status, int score) {
+  if (timelineCount < MAX_TIMELINE_POINTS) {
+    timeline[timelineCount].timestamp = millis();
+    timeline[timelineCount].status = status;
+    timeline[timelineCount].score = score;
+    timelineCount++;
+  } else {
+    for (int i = 1; i < MAX_TIMELINE_POINTS; i++) {
+      timeline[i - 1] = timeline[i];
+    }
+    timeline[MAX_TIMELINE_POINTS - 1].timestamp = millis();
+    timeline[MAX_TIMELINE_POINTS - 1].status = status;
+    timeline[MAX_TIMELINE_POINTS - 1].score = score;
+  }
+}
+
+void applyOutputFeedback(const String& status) {
+  if (status == "BAD") {
+    digitalWrite(ledPin, HIGH);
+
+    unsigned long currentMillis = millis();
+    if (currentMillis - lastBuzzToggle >= 600) {
+      lastBuzzToggle = currentMillis;
+      buzzerState = !buzzerState;
+      digitalWrite(buzzerPin, buzzerState ? HIGH : LOW);
+    }
+  } else if (status == "OKAY") {
+    digitalWrite(ledPin, HIGH);
+    digitalWrite(buzzerPin, LOW);
+    buzzerState = false;
+  } else {
+    digitalWrite(ledPin, LOW);
+    digitalWrite(buzzerPin, LOW);
+    buzzerState = false;
+  }
 }
 
 void resetSessionStats(const String& sessionId) {
@@ -98,56 +207,69 @@ void endCurrentSession() {
   controlState.active = false;
 }
 
-void addTimelinePoint(const String& status, int score) {
-  if (timelineCount < MAX_TIMELINE_POINTS) {
-    timeline[timelineCount].timestamp = millis();
-    timeline[timelineCount].status = status;
-    timeline[timelineCount].score = score;
-    timelineCount++;
-  } else {
-    for (int i = 1; i < MAX_TIMELINE_POINTS; i++) {
-      timeline[i - 1] = timeline[i];
-    }
-    timeline[MAX_TIMELINE_POINTS - 1].timestamp = millis();
-    timeline[MAX_TIMELINE_POINTS - 1].status = status;
-    timeline[MAX_TIMELINE_POINTS - 1].score = score;
-  }
+
+void uploadControlToFirebase() {
+  String json =
+    "{"
+    "\"active\":" + String(controlState.active ? "true" : "false") + ","
+    "\"sessionId\":\"" + controlState.sessionId + "\","
+    "\"startedAt\":" + String(controlState.startedAt) +
+    "}";
+
+  httpsPUT("/control", json);
 }
 
-void updateGoodPercentage() {
-  if (sessionState.totalReadings == 0) {
-    sessionState.goodPercentage = 0;
-  } else {
-    sessionState.goodPercentage =
-      (sessionState.goodCount * 100) / sessionState.totalReadings;
-  }
+void uploadLiveToFirebase() {
+  String json =
+    "{"
+    "\"sessionId\":\"" + liveState.sessionId + "\","
+    "\"status\":\"" + liveState.status + "\","
+    "\"score\":" + String(liveState.score) + ","
+    "\"updatedAt\":" + String(liveState.updatedAt) + ","
+    "\"durationSeconds\":" + String(liveState.durationSeconds) +
+    "}";
+
+  httpsPUT("/live", json);
 }
 
-void applyOutputFeedback(const String& status) {
-  if (status == "BAD") {
-    digitalWrite(ledPin, HIGH);
+void uploadSessionSummaryToFirebase() {
+  if (controlState.sessionId == "") return;
 
-    unsigned long currentMillis = millis();
-    if (currentMillis - lastBuzzToggle >= 600) {
-      lastBuzzToggle = currentMillis;
-      buzzerState = !buzzerState;
-      digitalWrite(buzzerPin, buzzerState ? HIGH : LOW);
-    }
-  } else if (status == "OKAY") {
-    // okay = LED on, no buzzer
-    digitalWrite(ledPin, HIGH);
-    digitalWrite(buzzerPin, LOW);
-    buzzerState = false;
-  } else {
-    // good = LED off, no buzzer
-    digitalWrite(ledPin, LOW);
-    digitalWrite(buzzerPin, LOW);
-    buzzerState = false;
-  }
+  String json =
+    "{"
+    "\"startedAt\":" + String(sessionState.startedAt) + ","
+    "\"endedAt\":" + String(sessionState.endedAt) + ","
+    "\"latestStatus\":\"" + sessionState.latestStatus + "\","
+    "\"goodCount\":" + String(sessionState.goodCount) + ","
+    "\"okayCount\":" + String(sessionState.okayCount) + ","
+    "\"badCount\":" + String(sessionState.badCount) + ","
+    "\"totalReadings\":" + String(sessionState.totalReadings) + ","
+    "\"goodPercentage\":" + String(sessionState.goodPercentage) +
+    "}";
+
+  httpsPUT("/sessions_live/" + controlState.sessionId, json);
+}
+
+void uploadTimelineEventToFirebase(const String& status, int score) {
+  if (controlState.sessionId == "") return;
+
+  String json =
+    "{"
+    "\"timestamp\":" + String(millis()) + ","
+    "\"status\":\"" + status + "\","
+    "\"score\":" + String(score) +
+    "}";
+
+  httpsPOST("/sessions_live/" + controlState.sessionId + "/timeline", json);
 }
 
 void recordPostureStatus(const String& status) {
-  if (!controlState.active) return;
+  if (!controlState.active) {
+    String newSessionId = generateSessionId();
+    resetSessionStats(newSessionId);
+    uploadControlToFirebase();
+    uploadSessionSummaryToFirebase();
+  }
 
   int score = statusToScore(status);
   unsigned long now = millis();
@@ -172,100 +294,47 @@ void recordPostureStatus(const String& status) {
   updateGoodPercentage();
   addTimelinePoint(status, score);
   applyOutputFeedback(status);
+
+  uploadLiveToFirebase();
+  uploadSessionSummaryToFirebase();
+  uploadTimelineEventToFirebase(status, score);
+
+  Serial.print("Uploaded to Firebase: ");
+  Serial.println(status);
 }
 
-// ----------------------------
-// JSON builders
-// ----------------------------
-String buildTimelineJson() {
-  String json = "[";
 
-  for (int i = 0; i < timelineCount; i++) {
-    json += "{";
-    json += "\"timestamp\":" + String(timeline[i].timestamp) + ",";
-    json += "\"status\":\"" + timeline[i].status + "\",";
-    json += "\"score\":" + String(timeline[i].score);
-    json += "}";
-
-    if (i < timelineCount - 1) {
-      json += ",";
-    }
-  }
-
-  json += "]";
-  return json;
-}
-
-String buildSchemaJson() {
-  String json = "{";
-
-  json += "\"control\":{";
-  json += "\"active\":" + String(controlState.active ? "true" : "false") + ",";
-  json += "\"sessionId\":\"" + controlState.sessionId + "\",";
-  json += "\"startedAt\":" + String(controlState.startedAt);
-  json += "},";
-
-  json += "\"live\":{";
-  json += "\"sessionId\":\"" + liveState.sessionId + "\",";
-  json += "\"status\":\"" + liveState.status + "\",";
-  json += "\"score\":" + String(liveState.score) + ",";
-  json += "\"updatedAt\":" + String(liveState.updatedAt) + ",";
-  json += "\"durationSeconds\":" + String(liveState.durationSeconds);
-  json += "},";
-
-  json += "\"sessions_live\":{";
-  json += "\"" + controlState.sessionId + "\":{";
-  json += "\"startedAt\":" + String(sessionState.startedAt) + ",";
-  json += "\"endedAt\":" + String(sessionState.endedAt) + ",";
-  json += "\"latestStatus\":\"" + sessionState.latestStatus + "\",";
-  json += "\"goodCount\":" + String(sessionState.goodCount) + ",";
-  json += "\"okayCount\":" + String(sessionState.okayCount) + ",";
-  json += "\"badCount\":" + String(sessionState.badCount) + ",";
-  json += "\"totalReadings\":" + String(sessionState.totalReadings) + ",";
-  json += "\"goodPercentage\":" + String(sessionState.goodPercentage) + ",";
-  json += "\"timeline\":" + buildTimelineJson();
-  json += "}";
-  json += "}";
-
-  json += "}";
-
-  return json;
-}
-
-// ----------------------------
-// HTTP handlers
-// ----------------------------
 void handleRoot() {
-  String msg = "";
-  msg += "Posture Output ESP is running\n";
-  msg += "GET /schema -> full schema JSON\n";
-  msg += "GET /start -> start session\n";
-  msg += "GET /end -> end session\n";
-  msg += "GET /status?value=GOOD or OKAY or BAD -> send posture update\n";
-  server.send(200, "text/plain", msg);
-}
-
-void handleSchema() {
-  server.send(200, "application/json", buildSchemaJson());
+  server.send(200, "text/plain", "Output ESP running");
 }
 
 void handleStart() {
   String newSessionId = generateSessionId();
   resetSessionStats(newSessionId);
-  server.send(200, "application/json", buildSchemaJson());
+
+  uploadControlToFirebase();
+  uploadLiveToFirebase();
+  uploadSessionSummaryToFirebase();
+
+  server.send(200, "text/plain", "Session started");
 }
 
 void handleEnd() {
   endCurrentSession();
+
   digitalWrite(ledPin, LOW);
   digitalWrite(buzzerPin, LOW);
   buzzerState = false;
-  server.send(200, "application/json", buildSchemaJson());
+
+  uploadControlToFirebase();
+  uploadSessionSummaryToFirebase();
+
+  server.send(200, "text/plain", "Session ended");
 }
 
 void handleStatusUpdate() {
   if (!server.hasArg("value")) {
-    server.send(400, "application/json", "{\"error\":\"Missing value parameter\"}");
+    server.send(400, "text/plain", "Missing value");
     return;
   }
 
@@ -274,46 +343,15 @@ void handleStatusUpdate() {
   status.toUpperCase();
 
   if (status != "GOOD" && status != "OKAY" && status != "BAD") {
-    server.send(400, "application/json", "{\"error\":\"value must be GOOD, OKAY, or BAD\"}");
+    server.send(400, "text/plain", "Status must be GOOD, OKAY, or BAD");
     return;
-  }
-
-  if (!controlState.active) {
-    String newSessionId = generateSessionId();
-    resetSessionStats(newSessionId);
   }
 
   recordPostureStatus(status);
-  server.send(200, "application/json", buildSchemaJson());
+  server.send(200, "text/plain", "OK");
 }
 
-void handleLegacyPost() {
-  if (!server.hasArg("plain")) {
-    server.send(400, "text/plain", "Missing request body");
-    return;
-  }
 
-  String body = server.arg("plain");
-  body.trim();
-  body.toUpperCase();
-
-  if (body != "GOOD" && body != "OKAY" && body != "BAD") {
-    server.send(400, "text/plain", "Body must be GOOD, OKAY, or BAD");
-    return;
-  }
-
-  if (!controlState.active) {
-    String newSessionId = generateSessionId();
-    resetSessionStats(newSessionId);
-  }
-
-  recordPostureStatus(body);
-  server.send(200, "application/json", buildSchemaJson());
-}
-
-// ----------------------------
-// Setup / loop
-// ----------------------------
 void setup() {
   Serial.begin(115200);
   delay(1000);
@@ -323,22 +361,31 @@ void setup() {
   digitalWrite(ledPin, LOW);
   digitalWrite(buzzerPin, LOW);
 
-  WiFi.mode(WIFI_AP);
-  WiFi.softAP(ssid, password);
+  WiFi.mode(WIFI_AP_STA);
 
-  Serial.println("Access Point started");
-  Serial.print("AP IP address: ");
+  WiFi.softAP(apSSID, apPassword);
+  Serial.println("AP started");
+  Serial.print("AP IP: ");
   Serial.println(WiFi.softAPIP());
 
+  WiFi.begin(internetSSID, internetPassword);
+  Serial.print("Connecting to internet");
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println();
+  Serial.println("Connected to internet");
+  Serial.print("STA IP: ");
+  Serial.println(WiFi.localIP());
+
   server.on("/", HTTP_GET, handleRoot);
-  server.on("/schema", HTTP_GET, handleSchema);
   server.on("/start", HTTP_GET, handleStart);
   server.on("/end", HTTP_GET, handleEnd);
   server.on("/status", HTTP_GET, handleStatusUpdate);
-  server.on("/posture", HTTP_POST, handleLegacyPost);
 
   server.begin();
-  Serial.println("HTTP server started");
+  Serial.println("Server started");
 }
 
 void loop() {
