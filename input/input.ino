@@ -3,7 +3,7 @@
 #include <Wire.h>
 #include <WiFi.h>
 #include <HTTPClient.h>
-#define sensorPin 26
+#define sensorPin 34
 
 const char* ssid = "PostureESP";
 const char* password = "12345678";
