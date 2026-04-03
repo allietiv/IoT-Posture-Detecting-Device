@@ -6,9 +6,13 @@
   <title>BackTrack</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet" />
+  <!-- CSS tag for the styling of the webpage-->
   <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+   
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  
+    /*color palette --CSS variables/design tokens*/
     :root {
       --cream:    #F2EDE3;
       --sage:     #8A9E7B;
@@ -23,7 +27,7 @@
       --card-bg:  #FFFFFF;
       --border:   rgba(0,0,0,0.10);
     }
-
+    /*setting overall background*/
     body {
       background: var(--cream);
       font-family: 'DM Sans', sans-serif;
@@ -40,7 +44,7 @@
       gap: 1.25rem;
     }
 
-    /* ── HEADER ── */
+    /* header  */
     .header {
       text-align: center;
       animation: fadeDown 0.5s ease both;
@@ -60,7 +64,7 @@
       margin-top: 0.25rem;
     }
 
-    /* ── CARD ── */
+    /* cards */
     .card {
       background: var(--card-bg);
       border-radius: 12px;
@@ -71,7 +75,7 @@
     .card:nth-child(2) { animation-delay: 0.08s; }
     .card:nth-child(3) { animation-delay: 0.16s; }
 
-    .card-header {
+    .card-header { /*formats the header of each card*/
       background: var(--sage);
       padding: 0.6rem 1.25rem;
       display: grid;
@@ -94,7 +98,7 @@
       text-align: right;
     }
 
-    /* Live rating badge */
+    /* Live-rating row -- indicates good, okay, poor */
     .rating-row {
       display: flex;
       align-items: center;
@@ -113,7 +117,7 @@
 
     .slash { color: rgba(255,255,255,0.4); font-size: 0.85rem; }
 
-    /* ── STATUS INDICATOR DOT ── */
+    /* live dot -- animations upon poor posture behavior to draw attention*/
     .live-dot {
       width: 10px;
       height: 10px;
@@ -130,7 +134,7 @@
       50%      { box-shadow: 0 0 0 6px rgba(201,79,66,0.1); }
     }
 
-    /* ── TABS ── */
+    /* Current/Day/Week/Month tabs -- for now, these segments are filled with dummy data*/
     .tabs {
       display: grid;
       grid-template-columns: repeat(4, 1fr);
@@ -156,7 +160,7 @@
       background: rgba(232,150,58,0.06);
     }
 
-    /* ── CHART AREA ── */
+    /*charts for historic user data*/
     .chart-wrap {
       padding: 1rem 1.25rem 1.25rem;
     }
@@ -174,7 +178,7 @@
     }
     .chart-summary span { color: var(--text); font-weight: 500; }
 
-    /* ── INSIGHTS ── */
+    /* insights grid for stat boxes */
     .insights-grid {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
@@ -202,7 +206,7 @@
       margin-top: 0.35rem;
     }
 
-    /* ── TIME OF DAY BAR ── */
+    /* time of day bar*/
     .tod-section {
       padding: 0 1.25rem 1.25rem;
     }
@@ -243,7 +247,7 @@
     .tod-bar-label { font-size: 0.68rem; color: var(--text-muted); }
     .tod-bar-pct   { font-size: 0.72rem; font-weight: 600; color: var(--text); }
 
-    /* ── ANIMATIONS ── */
+    /* ANIMATIONS  */
     @keyframes fadeDown {
       from { opacity: 0; transform: translateY(-12px); }
       to   { opacity: 1; transform: translateY(0); }
@@ -253,7 +257,7 @@
       to   { opacity: 1; transform: translateY(0); }
     }
 
-    /* ── FOOTER / WEBSOCKET NOTE ── */
+    /*FOOTER / WEBSOCKET NOTE : shows the firebase connection state */
     .footer-note {
       text-align: center;
       font-size: 0.7rem;
@@ -278,13 +282,15 @@
 <body>
 <div class="app">
 
+
+<!--HTML ELEMENT CODE!!-->
   <!-- HEADER -->
   <div class="header">
     <div class="logo">BACKTRACK</div>
     <div class="subtitle">Posture Intelligence</div>
   </div>
 
-  <!-- SESSION STATUS CARD -->
+  <!--session status card (bottom card -- shows posture percentage)-->
   <div class="card" id="session-card">
     <div class="card-header">
       <div>
@@ -357,25 +363,27 @@
 
 <!-- Chart.js -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+
+<!--JAVASCRIPT CODE BELOW-->
 <script>
 
-/* ════════════════════════════════════════
-   MOCK DATA  — swap these with Firebase / WebSocket events
-   ════════════════════════════════════════ */
+/* 
+   MOCK/DUMMY DATA  — will be overwritten with Firebase data 
+   */
 
 const RATINGS = { GOOD: 2, OKAY: 1, POOR: 0 };
 
-// Simulated live state (replace with socket.on('posture', ...) data)
+// Simulated live state (gets overwritten upon DB connection)
 let liveState = { rating: 'GOOD', sessionStart: Date.now() };
 
-// Per-tab scatter data: { x: seconds/minutes/hours, y: 0|1|2 }
+// dummy scatter plot data for the day/week/month tabs
 const mockData = {
-  current: generateSession(40, 'current'),
+  current: generateSession(40, 'current'), //starts empty and fills up with real data
   day:     generateSession(80, 'day'),
   week:    generateSession(120, 'week'),
   month:   generateSession(200, 'month'),
 };
-
+// generates n fake data points for each tab using random walk algorithm
 function generateSession(n, tab) {
   const points = [];
   let rating = 2;
@@ -388,9 +396,7 @@ function generateSession(n, tab) {
   return points;
 }
 
-/* ════════════════════════════════════════
-   TIMER
-   ════════════════════════════════════════ */
+/* updateTimer: redundant timer for duration of posture event */
 function updateTimer() {
   const elapsed = Math.floor((Date.now() - liveState.sessionStart) / 1000);
   const m = String(Math.floor(elapsed / 60)).padStart(2, '0');
@@ -399,9 +405,9 @@ function updateTimer() {
 }
 setInterval(updateTimer, 1000);
 
-/* ════════════════════════════════════════
-   LIVE RATING UI
-   ════════════════════════════════════════ */
+
+ //  LIVE RATING UI -- updaters all the visual elemnts that reflect current posture behavior rating
+  
 function applyRating(rating) {
   const dot  = document.getElementById('live-dot');
   const pill = document.getElementById('rating-pill');
@@ -419,9 +425,7 @@ function applyRating(rating) {
 // Initial placeholder until Firebase responds
 applyRating(liveState.rating);
 
-/* ════════════════════════════════════════
-   CHART
-   ════════════════════════════════════════ */
+/*creates Chart.js scatter chart on the postureChart elemnt */
 const ctx = document.getElementById('postureChart').getContext('2d');
 
 const axisLabels = { 0: 'poor', 1: 'okay', 2: 'good' };
@@ -494,9 +498,7 @@ const chart = new Chart(ctx, {
   }
 });
 
-/* ════════════════════════════════════════
-   TAB SWITCHING
-   ════════════════════════════════════════ */
+/* Th functions that occur onclick  */
 const tabLabels = {
   current: { xLabel: 'time (min)', xSuffix: 'm', trend: 'improved' },
   day:     { xLabel: 'time (min)', xSuffix: 'm', trend: 'worsened slightly' },
@@ -517,9 +519,7 @@ function switchTab(tab, el) {
   document.getElementById('summary-trend').textContent = cfg.trend;
 }
 
-/* ════════════════════════════════════════
-   TIME OF DAY BARS
-   ════════════════════════════════════════ */
+/* hardcoding data for time of day bars (morning, midday, evening, night*/
 const todData = [
   { label: 'Morning', pct: 78, color: '#5BA668' },
   { label: 'Midday',  pct: 55, color: '#E8963A' },
@@ -539,11 +539,11 @@ todData.forEach(d => {
     </div>`;
 });
 
-/* ════════════════════════════════════════
+/* 
    FIREBASE — normalise value from ESP32
    "GOOD" → GOOD, "OKAY" → OKAY,
    "BAD" / "POOR" → POOR  (handles both naming conventions)
-   ════════════════════════════════════════ */
+     FUTURE UPDATES: pick a consistent naming prototocol for poor posture events*/
 function normaliseRating(raw) {
   if (!raw) return 'POOR';
   const v = String(raw).trim().toUpperCase();
@@ -554,11 +554,14 @@ function normaliseRating(raw) {
 
 </script>
 
-<!-- Firebase SDK (ES module — loads after Chart.js UMD above) -->
+<!-- Firebase SDK (ES module — loads after Chart.js UMD above) 
+ SEPARATE FROM MAIN SCRIPT (in a new tag) and thereby runs after the main script-->
 <script type="module">
   import { initializeApp }              from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
   import { getDatabase, ref, onValue }  from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
 
+  //API KEYS 
+  // should hide these away eventually, but suitable for midpoint demo 
   const firebaseConfig = {
     apiKey:            "AIzaSyDWtlCbBBEuB-d34Q76RpQ-WMwrGjo8fxM",
     authDomain:        "iot-posture-monitoring.firebaseapp.com",
@@ -569,6 +572,7 @@ function normaliseRating(raw) {
     appId:             "1:326147016174:web:842f22580aff6061b7baff",
   };
 
+//init firebass app and get ref to DB
   const app = initializeApp(firebaseConfig);
   const db  = getDatabase(app);
 
@@ -580,6 +584,7 @@ const controlRef = ref(db, 'control');
 
 let activeSessionId = "";
 
+//LISTENER 1: fires whenever control node changes
 onValue(controlRef, (snapshot) => {
   const control = snapshot.val() || {};
   activeSessionId = control.sessionId || "";
@@ -592,7 +597,7 @@ onValue(controlRef, (snapshot) => {
   } else {
     note.textContent = 'No active session';
   }
-
+//NESTED LISTENER -- updates the insight boxes
   if (activeSessionId) {
     const sessionRef = ref(db, `sessions_live/${activeSessionId}`);
     onValue(sessionRef, (sessionSnap) => {
@@ -606,7 +611,7 @@ onValue(controlRef, (snapshot) => {
     });
   }
 });
-
+//LISTENER 2: fires every time the ESP32 pushes a new reading (updates ratng, timer and chart dynamically)
 onValue(liveRef, (snapshot) => {
   const live = snapshot.val();
 
