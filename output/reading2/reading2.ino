@@ -1,8 +1,11 @@
+// output/reading2/reading2.ino - LED andbuzzer
+
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
 #include <WebServer.h>
 
+// Device and Wifi credentials
 const char* apSSID = "PostureESP";
 const char* apPassword = "12345678";
 
@@ -10,23 +13,29 @@ const char* apPassword = "12345678";
 const char* internetSSID = "ufdevice";
 const char* internetPassword = "gogators";
 
+// Firebase Realtime Database URL
 const String firebaseBase = "https://iot-posture-monitoring-default-rtdb.firebaseio.com";
 
+// local HTTP server on port 80
 WebServer server(80);
 
-const int ledPin = 26;
-const int buzzerPin = 27;
+const int ledPin = 26;    // warning LED pin (okay/bad status)
+const int buzzerPin = 27; // audible buzzer pin (bad status)
 
 unsigned long lastBuzzToggle = 0;
 bool buzzerState = false;
 
 
+// DATA STRUCTUTRES
+
+// tracks whether a session is active
 struct ControlState {
-  bool active = false;
-  String sessionId = "";
-  unsigned long startedAt = 0;
+  bool active = false;          // true if a session is active
+  String sessionId = "";        // current session ID 
+  unsigned long startedAt = 0;  // timestamp when current session started
 };
 
+// most recent posture reading (mirros /live in Firebase)
 struct LiveState {
   String sessionId = "";
   String status = "UNKNOWN";
