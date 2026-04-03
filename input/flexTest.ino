@@ -1,3 +1,4 @@
+// accelerometer + flex sensor test (PRELIMINARY VERSION)
 #include <Adafruit_MPU6050.h>
 #include <Adafruit_Sensor.h>
 #include <Wire.h>
@@ -5,27 +6,35 @@
 #include <HTTPClient.h>
 #define sensorPin 26
 
+// Wi-Fi credentials and output server URL
 const char* ssid = "PostureESP";
 const char* password = "12345678";
 const char* outputServer = "http://192.168.4.1/status?value=";
 
 Adafruit_MPU6050 mpu;
 
+// PIN ASSIGNMENTS
 const int buttonPin = 2; 
 int buttonState = 0;
+// baseline readings for accelerometer and gyroscope
 float baseAccX = 0;
 float baseAccY = 0;
 float baseAccZ = 0;
+// current readings for accelerometer and gyroscope
 float currAccX = 0;
 float currAccY = 0;
 float currAccZ = 0;
+// baseline and current readings for flex sensor
 float baseGyroX = 0;
 float baseGyroY = 0;
 float baseGyroZ = 0;
+// current readings for gyroscope
 float currGyroX = 0;
 float currGyroY = 0;
 float currGyroZ = 0;
+// sum of gyro diffs
 float totDiff= 0;
+// baseline and current readings for flex sensor
 float currFlex = 0;
 float baseFlex = 0;
 sensors_event_t a,g,temp;
@@ -42,6 +51,7 @@ const unsigned long sendInterval = 2000;   // resend every 2 sec even if same st
 const unsigned long readDelay = 250;       // sensor read speed
 String lastStatus = "";
 
+// function to classify posture based on total gyro difference and flex sensor value
 String classifyPosture(float totVals) { //if 0 == good, 1 == ok, 2==bad
   Serial.print("totvals: ");
   Serial.println(totVals);
@@ -54,6 +64,7 @@ String classifyPosture(float totVals) { //if 0 == good, 1 == ok, 2==bad
   }
 }
 
+// function to classify posture based on total gyro difference and flex sensor value, returns int for easier averaging
 int classifyPostureINT(float sensorValue, int gryoFlex) { //second val to signal if gyro or flex classification
   Serial.print("snesVal: ");
   Serial.println(sensorValue);
@@ -65,7 +76,7 @@ int classifyPostureINT(float sensorValue, int gryoFlex) { //second val to signal
     return 2;
   }
 }
-
+// function to set baseline values for accelerometer and gyroscope
 void baseline(){
   baseAccX = a.acceleration.x;
   baseAccY = a.acceleration.y;
@@ -75,6 +86,7 @@ void baseline(){
   baseGyroZ = g.gyro.z;
 }
 
+// function to set baseline values for flex sensor
 void connectToOutputESP() {
   WiFi.begin(ssid, password);
   Serial.print("Connecting to output ESP");
@@ -90,6 +102,7 @@ void connectToOutputESP() {
   Serial.println(WiFi.localIP());
 }
 
+// function to send posture status to output ESP via HTTP GET request
 void sendStatusToOutput(const String& status) {
   if (WiFi.status() != WL_CONNECTED) {
     Serial.println("Wi-Fi disconnected. Reconnecting...");
@@ -118,6 +131,7 @@ void sendStatusToOutput(const String& status) {
   http.end();
 }
 
+// setup, runs at power on or reset
 void setup() {
   Serial.begin(115200);
   // pinMode(groundPin, OUTPUT);
@@ -139,6 +153,7 @@ void setup() {
 
 }
 
+// main loop, runs repeatedly after setup
 void loop() {
   String currStatGyro = "";
   String currStatFlex = "";
