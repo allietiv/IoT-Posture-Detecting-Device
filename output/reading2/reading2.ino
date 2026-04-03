@@ -44,6 +44,7 @@ struct LiveState {
   unsigned long durationSeconds = 0;
 };
 
+//stores stats for whole session 
 struct SessionLiveState {
   unsigned long startedAt = 0;
   unsigned long endedAt = 0;
@@ -55,14 +56,16 @@ struct SessionLiveState {
   int goodPercentage = 0;
 };
 
+//timeline tracking 
 const int MAX_TIMELINE_POINTS = 120;
 
+//each point stores time + posture info 
 struct TimelinePoint {
   unsigned long timestamp = 0;
   String status = "UNKNOWN";
   int score = 0;
 };
-
+//array to store timeline history 
 TimelinePoint timeline[MAX_TIMELINE_POINTS];
 int timelineCount = 0;
 
@@ -70,7 +73,9 @@ ControlState controlState;
 LiveState liveState;
 SessionLiveState sessionState;
 
+//firebase helpers
 
+//get request from firebase, creates secure client & sends request
 String httpsGET(const String& path) {
   WiFiClientSecure client;
   client.setInsecure();
@@ -90,6 +95,7 @@ String httpsGET(const String& path) {
   return payload;
 }
 
+//put request - sends json to firebase
 void httpsPUT(const String& path, const String& json) {
   WiFiClientSecure client;
   client.setInsecure();
@@ -103,6 +109,7 @@ void httpsPUT(const String& path, const String& json) {
   https.end();
 }
 
+//patch request - updates data
 void httpsPATCH(const String& path, const String& json) {
   WiFiClientSecure client;
   client.setInsecure();
@@ -115,7 +122,7 @@ void httpsPATCH(const String& path, const String& json) {
   https.PATCH(json);
   https.end();
 }
-
+//post request- adds new data 
 void httpsPOST(const String& path, const String& json) {
   WiFiClientSecure client;
   client.setInsecure();
@@ -129,18 +136,20 @@ void httpsPOST(const String& path, const String& json) {
   https.end();
 }
 
+//utility functions
 
+//makes a unique session ID
 String generateSessionId() {
   return "session_" + String(millis());
 }
-
+//converts posture status into score
 int statusToScore(const String& status) {
   if (status == "GOOD") return 90;
   if (status == "OKAY") return 60;
   if (status == "BAD") return 30;
   return 0;
 }
-
+//percentage of good posture
 void updateGoodPercentage() {
   if (sessionState.totalReadings == 0) {
     sessionState.goodPercentage = 0;
@@ -149,7 +158,7 @@ void updateGoodPercentage() {
       (sessionState.goodCount * 100) / sessionState.totalReadings;
   }
 }
-
+//add new posture reading to timeline
 void addTimelinePoint(const String& status, int score) {
   if (timelineCount < MAX_TIMELINE_POINTS) {
     timeline[timelineCount].timestamp = millis();
@@ -165,7 +174,8 @@ void addTimelinePoint(const String& status, int score) {
     timeline[MAX_TIMELINE_POINTS - 1].score = score;
   }
 }
-
+//control LED and buzzer based on posture
+//bad = buzz + LED, okay = LED only, good = nothing
 void applyOutputFeedback(const String& status) {
   if (status == "BAD") {
     digitalWrite(ledPin, HIGH);
@@ -186,7 +196,7 @@ void applyOutputFeedback(const String& status) {
     buzzerState = false;
   }
 }
-
+//resets for a new session
 void resetSessionStats(const String& sessionId) {
   controlState.active = true;
   controlState.sessionId = sessionId;
@@ -209,14 +219,15 @@ void resetSessionStats(const String& sessionId) {
 
   timelineCount = 0;
 }
-
+//ends current session
 void endCurrentSession() {
   if (!controlState.active) return;
   sessionState.endedAt = millis();
   controlState.active = false;
 }
 
-
+//firebase upload functions
+//uploads session control info
 void uploadControlToFirebase() {
   String json =
     "{"
@@ -227,7 +238,7 @@ void uploadControlToFirebase() {
 
   httpsPUT("/control", json);
 }
-
+//uploads live posture data
 void uploadLiveToFirebase() {
   String json =
     "{"
@@ -240,7 +251,7 @@ void uploadLiveToFirebase() {
 
   httpsPUT("/live", json);
 }
-
+//uploads session summary stats
 void uploadSessionSummaryToFirebase() {
   if (controlState.sessionId == "") return;
 
@@ -258,7 +269,7 @@ void uploadSessionSummaryToFirebase() {
 
   httpsPUT("/sessions_live/" + controlState.sessionId, json);
 }
-
+//upload one timeline event
 void uploadTimelineEventToFirebase(const String& status, int score) {
   if (controlState.sessionId == "") return;
 
@@ -271,7 +282,8 @@ void uploadTimelineEventToFirebase(const String& status, int score) {
 
   httpsPOST("/sessions_live/" + controlState.sessionId + "/timeline", json);
 }
-
+//called when new posture data comes in
+//starts session if needed, updates counts+stats, sends to firebase
 void recordPostureStatus(const String& status) {
   if (!controlState.active) {
     String newSessionId = generateSessionId();
@@ -312,11 +324,14 @@ void recordPostureStatus(const String& status) {
   Serial.println(status);
 }
 
+//server routes 
 
+//test route - shows esp is running
 void handleRoot() {
   server.send(200, "text/plain", "Output ESP running");
 }
 
+//starts new session, resets everything
 void handleStart() {
   String newSessionId = generateSessionId();
   resetSessionStats(newSessionId);
@@ -328,6 +343,7 @@ void handleStart() {
   server.send(200, "text/plain", "Session started");
 }
 
+//ends session, stops led/buzzer
 void handleEnd() {
   endCurrentSession();
 
@@ -340,7 +356,7 @@ void handleEnd() {
 
   server.send(200, "text/plain", "Session ended");
 }
-
+//receives posture from input esp
 void handleStatusUpdate() {
   if (!server.hasArg("value")) {
     server.send(400, "text/plain", "Missing value");
@@ -360,23 +376,25 @@ void handleStatusUpdate() {
   server.send(200, "text/plain", "OK");
 }
 
+//setup & loop
+
 
 void setup() {
   Serial.begin(115200);
   delay(1000);
-
+  //pins
   pinMode(ledPin, OUTPUT);
   pinMode(buzzerPin, OUTPUT);
   digitalWrite(ledPin, LOW);
   digitalWrite(buzzerPin, LOW);
 
   WiFi.mode(WIFI_AP_STA);
-
+  //hotspot
   WiFi.softAP(apSSID, apPassword);
   Serial.println("AP started");
   Serial.print("AP IP: ");
   Serial.println(WiFi.softAPIP());
-
+  //connect to internet 
   WiFi.begin(internetSSID, internetPassword);
   Serial.print("Connecting to internet");
   unsigned long startAttempt = millis();
@@ -391,16 +409,17 @@ void setup() {
   Serial.println("Connected to internet");
   Serial.print("STA IP: ");
   Serial.println(WiFi.localIP());
-
+  //server routes 
   server.on("/", HTTP_GET, handleRoot);
   server.on("/start", HTTP_GET, handleStart);
   server.on("/end", HTTP_GET, handleEnd);
   server.on("/status", HTTP_GET, handleStatusUpdate);
-
+  //start server
   server.begin();
   Serial.println("Server started");
 }
 
 void loop() {
+  //keep server running & listening 
   server.handleClient();
 }
