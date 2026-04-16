@@ -21,6 +21,8 @@ WebServer server(80);
 
 const int ledPin = 26;    // warning LED pin (okay/bad status)
 const int buzzerPin = 27; // audible buzzer pin (bad status)
+const int buttonPin = 14;
+bool lastButtonState = HIGH;
 
 unsigned long lastBuzzToggle = 0;
 bool buzzerState = false;
@@ -109,19 +111,6 @@ void httpsPUT(const String& path, const String& json) {
   https.end();
 }
 
-//patch request - updates data
-void httpsPATCH(const String& path, const String& json) {
-  WiFiClientSecure client;
-  client.setInsecure();
-
-  HTTPClient https;
-  String url = firebaseBase + path + ".json";
-
-  https.begin(client, url);
-  https.addHeader("Content-Type", "application/json");
-  https.PATCH(json);
-  https.end();
-}
 //post request- adds new data 
 void httpsPOST(const String& path, const String& json) {
   WiFiClientSecure client;
@@ -143,6 +132,7 @@ String generateSessionId() {
   return "session_" + String(millis());
 }
 //converts posture status into score
+
 int statusToScore(const String& status) {
   if (status == "GOOD") return 90;
   if (status == "OKAY") return 60;
@@ -150,6 +140,7 @@ int statusToScore(const String& status) {
   return 0;
 }
 //percentage of good posture
+
 void updateGoodPercentage() {
   if (sessionState.totalReadings == 0) {
     sessionState.goodPercentage = 0;
@@ -159,23 +150,18 @@ void updateGoodPercentage() {
   }
 }
 //add new posture reading to timeline
+
 void addTimelinePoint(const String& status, int score) {
   if (timelineCount < MAX_TIMELINE_POINTS) {
     timeline[timelineCount].timestamp = millis();
     timeline[timelineCount].status = status;
     timeline[timelineCount].score = score;
     timelineCount++;
-  } else {
-    for (int i = 1; i < MAX_TIMELINE_POINTS; i++) {
-      timeline[i - 1] = timeline[i];
-    }
-    timeline[MAX_TIMELINE_POINTS - 1].timestamp = millis();
-    timeline[MAX_TIMELINE_POINTS - 1].status = status;
-    timeline[MAX_TIMELINE_POINTS - 1].score = score;
   }
 }
 //control LED and buzzer based on posture
 //bad = buzz + LED, okay = LED only, good = nothing
+
 void applyOutputFeedback(const String& status) {
   if (status == "BAD") {
     digitalWrite(ledPin, HIGH);
@@ -197,6 +183,7 @@ void applyOutputFeedback(const String& status) {
   }
 }
 //resets for a new session
+
 void resetSessionStats(const String& sessionId) {
   controlState.active = true;
   controlState.sessionId = sessionId;
@@ -220,14 +207,45 @@ void resetSessionStats(const String& sessionId) {
   timelineCount = 0;
 }
 //ends current session
+
+void setLiveInactive() {
+  liveState.sessionId = "";
+  liveState.status = "INACTIVE";
+  liveState.score = 0;
+  liveState.updatedAt = millis();
+  liveState.durationSeconds = 0;
+}
+
 void endCurrentSession() {
   if (!controlState.active) return;
   sessionState.endedAt = millis();
   controlState.active = false;
+  setLiveInactive();
+}
+
+// shared session logic
+void startSession() {
+  String newSessionId = generateSessionId();
+  resetSessionStats(newSessionId);
+
+  uploadControlToFirebase();
+  uploadLiveToFirebase();
+  uploadSessionSummaryToFirebase();
+}
+
+void stopSession() {
+  endCurrentSession();
+
+  digitalWrite(ledPin, LOW);
+  digitalWrite(buzzerPin, LOW);
+  buzzerState = false;
+
+  uploadControlToFirebase();
+  uploadLiveToFirebase();
+  uploadSessionSummaryToFirebase();
 }
 
 //firebase upload functions
-//uploads session control info
 void uploadControlToFirebase() {
   String json =
     "{"
@@ -238,7 +256,7 @@ void uploadControlToFirebase() {
 
   httpsPUT("/control", json);
 }
-//uploads live posture data
+
 void uploadLiveToFirebase() {
   String json =
     "{"
@@ -251,7 +269,7 @@ void uploadLiveToFirebase() {
 
   httpsPUT("/live", json);
 }
-//uploads session summary stats
+
 void uploadSessionSummaryToFirebase() {
   if (controlState.sessionId == "") return;
 
@@ -269,157 +287,109 @@ void uploadSessionSummaryToFirebase() {
 
   httpsPUT("/sessions_live/" + controlState.sessionId, json);
 }
-//upload one timeline event
-void uploadTimelineEventToFirebase(const String& status, int score) {
-  if (controlState.sessionId == "") return;
 
-  String json =
-    "{"
-    "\"timestamp\":" + String(millis()) + ","
-    "\"status\":\"" + status + "\","
-    "\"score\":" + String(score) +
-    "}";
-
-  httpsPOST("/sessions_live/" + controlState.sessionId + "/timeline", json);
-}
-//called when new posture data comes in
-//starts session if needed, updates counts+stats, sends to firebase
 void recordPostureStatus(const String& status) {
-  if (!controlState.active) {
-    String newSessionId = generateSessionId();
-    resetSessionStats(newSessionId);
-    uploadControlToFirebase();
-    uploadSessionSummaryToFirebase();
-  }
+  if (!controlState.active) return;
 
   int score = statusToScore(status);
-  unsigned long now = millis();
 
-  liveState.sessionId = controlState.sessionId;
   liveState.status = status;
   liveState.score = score;
-  liveState.updatedAt = now;
-  liveState.durationSeconds = (now - controlState.startedAt) / 1000;
-
-  sessionState.latestStatus = status;
-  sessionState.totalReadings++;
-
-  if (status == "GOOD") {
-    sessionState.goodCount++;
-  } else if (status == "OKAY") {
-    sessionState.okayCount++;
-  } else if (status == "BAD") {
-    sessionState.badCount++;
-  }
-
-  updateGoodPercentage();
-  addTimelinePoint(status, score);
-  applyOutputFeedback(status);
 
   uploadLiveToFirebase();
-  uploadSessionSummaryToFirebase();
-  uploadTimelineEventToFirebase(status, score);
-
-  Serial.print("Uploaded to Firebase: ");
-  Serial.println(status);
 }
 
 //server routes 
+// CORS support
+void addCORSHeaders() {
+  server.sendHeader("Access-Control-Allow-Origin", "*");
+}
 
 //test route - shows esp is running
 void handleRoot() {
+  addCORSHeaders();
   server.send(200, "text/plain", "Output ESP running");
 }
 
 //starts new session, resets everything
 void handleStart() {
-  String newSessionId = generateSessionId();
-  resetSessionStats(newSessionId);
-
-  uploadControlToFirebase();
-  uploadLiveToFirebase();
-  uploadSessionSummaryToFirebase();
-
+  addCORSHeaders();
+  startSession();
   server.send(200, "text/plain", "Session started");
 }
 
 //ends session, stops led/buzzer
 void handleEnd() {
-  endCurrentSession();
-
-  digitalWrite(ledPin, LOW);
-  digitalWrite(buzzerPin, LOW);
-  buzzerState = false;
-
-  uploadControlToFirebase();
-  uploadSessionSummaryToFirebase();
-
+  addCORSHeaders();
+  stopSession();
   server.send(200, "text/plain", "Session ended");
 }
-//receives posture from input esp
+
 void handleStatusUpdate() {
+  addCORSHeaders();
+
   if (!server.hasArg("value")) {
     server.send(400, "text/plain", "Missing value");
     return;
   }
 
   String status = server.arg("value");
-  status.trim();
   status.toUpperCase();
-
-  if (status != "GOOD" && status != "OKAY" && status != "BAD") {
-    server.send(400, "text/plain", "Status must be GOOD, OKAY, or BAD");
-    return;
-  }
 
   recordPostureStatus(status);
   server.send(200, "text/plain", "OK");
 }
 
-//setup & loop
 
+//setup & loop
 
 void setup() {
   Serial.begin(115200);
   delay(1000);
-  //pins
+
   pinMode(ledPin, OUTPUT);
   pinMode(buzzerPin, OUTPUT);
-  digitalWrite(ledPin, LOW);
-  digitalWrite(buzzerPin, LOW);
+  pinMode(buttonPin, INPUT_PULLUP);
 
-  WiFi.mode(WIFI_AP_STA);
-  //hotspot
-  WiFi.softAP(apSSID, apPassword);
-  Serial.println("AP started");
-  Serial.print("AP IP: ");
-  Serial.println(WiFi.softAPIP());
-  //connect to internet 
+  WiFi.mode(WIFI_STA);
   WiFi.begin(internetSSID, internetPassword);
-  Serial.print("Connecting to internet");
-  unsigned long startAttempt = millis();
-  while (WiFi.status() != WL_CONNECTED && millis() - startAttempt < 10000) {
+
+  while (WiFi.status() != WL_CONNECTED) {
     delay(500);
-    Serial.print(".");
   }
-  if (WiFi.status() != WL_CONNECTED){
-    Serial.println("skip");
-  }
-  Serial.println();
-  Serial.println("Connected to internet");
-  Serial.print("STA IP: ");
+
   Serial.println(WiFi.localIP());
   //server routes 
-  server.on("/", HTTP_GET, handleRoot);
-  server.on("/start", HTTP_GET, handleStart);
-  server.on("/end", HTTP_GET, handleEnd);
-  server.on("/status", HTTP_GET, handleStatusUpdate);
-  //start server
+
+  server.on("/", handleRoot);
+  server.on("/start", handleStart);
+  server.on("/end", handleEnd);
+  server.on("/status", handleStatusUpdate);
+
+  setLiveInactive();
   server.begin();
-  Serial.println("Server started");
 }
 
 void loop() {
   //keep server running & listening 
+  bool currentButtonState = digitalRead(buttonPin);
+
+  if (lastButtonState == HIGH && currentButtonState == LOW) {
+    delay(150);
+
+    if (controlState.active) {
+      Serial.println("Button pressed: ending session");
+      stopSession();
+    } else {
+      Serial.println("Button pressed: starting session");
+      startSession();
+    }
+
+    while (digitalRead(buttonPin) == LOW) {
+      delay(10);
+    }
+  }
+
+  lastButtonState = currentButtonState;
   server.handleClient();
 }

@@ -291,20 +291,39 @@
   </div>
 
   <!--session status card (bottom card -- shows posture percentage)-->
-  <div class="card" id="session-card">
-    <div class="card-header">
-      <div>
-        <div class="card-header-label">Live Rating</div>
-        <div class="rating-row">
-          <span class="live-dot good" id="live-dot"></span>
-          <span class="rating-pill good" id="rating-pill" style="background:rgba(255,255,255,0.18); color:#fff;">GOOD</span>
-        </div>
-      </div>
-      <div class="card-header-right">
-        <div class="card-header-label">Duration</div>
-        <div class="card-header-value" id="timer-display">00:00</div>
-      </div>
+<!--session status card-->
+<div class="card" id="session-card">
+  <div class="card-header">
+  <div>
+    <div class="card-header-label">Live Rating</div>
+    <div class="rating-row">
+      <span class="live-dot good" id="live-dot"></span>
+      <span class="rating-pill good" id="rating-pill" style="background:rgba(255,255,255,0.18); color:#fff;">GOOD</span>
     </div>
+  </div>
+  <div class="card-header-right">
+    <div class="card-header-label">Duration</div>
+    <div class="card-header-value" id="timer-display">00:00</div>
+  </div>
+</div>
+
+<div style="padding: 0.85rem 1.25rem; display:flex; justify-content:center; border-bottom:1px solid var(--border);">
+  <button id="session-toggle-btn" onclick="toggleSession()" style="
+    background: var(--sage);
+    color: white;
+    border: none;
+    border-radius: 999px;
+    padding: 0.65rem 1.25rem;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.8rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    cursor: pointer;
+  ">
+    Start Session
+  </button>
+</div>
 
     <!-- TABS -->
     <div class="tabs">
@@ -375,6 +394,8 @@ const RATINGS = { GOOD: 2, OKAY: 1, POOR: 0 };
 
 // Simulated live state (gets overwritten upon DB connection)
 let liveState = { rating: 'GOOD', sessionStart: Date.now() };
+let sessionActive = false;
+const outputBaseUrl = "http://192.168.0.168";
 
 // dummy scatter plot data for the day/week/month tabs
 const mockData = {
@@ -398,6 +419,8 @@ function generateSession(n, tab) {
 
 /* updateTimer: redundant timer for duration of posture event */
 function updateTimer() {
+  if (!sessionActive) return;
+
   const elapsed = Math.floor((Date.now() - liveState.sessionStart) / 1000);
   const m = String(Math.floor(elapsed / 60)).padStart(2, '0');
   const s = String(elapsed % 60).padStart(2, '0');
@@ -405,10 +428,14 @@ function updateTimer() {
 }
 setInterval(updateTimer, 1000);
 
-
  //  LIVE RATING UI -- updaters all the visual elemnts that reflect current posture behavior rating
   
 function applyRating(rating) {
+  if (rating === 'INACTIVE') {
+    showInactiveSession();
+    return;
+  }
+
   const dot  = document.getElementById('live-dot');
   const pill = document.getElementById('rating-pill');
   const cls  = rating.toLowerCase();
@@ -417,13 +444,45 @@ function applyRating(rating) {
   pill.className = `rating-pill ${cls}`;
   pill.textContent = rating;
 
-  // Update insights good%
   const pcts = { GOOD: '62%', OKAY: '44%', POOR: '31%' };
   document.getElementById('good-pct').textContent = pcts[rating];
 }
-
 // Initial placeholder until Firebase responds
 applyRating(liveState.rating);
+
+function showInactiveSession() {
+  const dot  = document.getElementById('live-dot');
+  const pill = document.getElementById('rating-pill');
+
+  dot.className = 'live-dot';
+  dot.style.background = '#bdb8b2';
+  dot.style.boxShadow = 'none';
+
+  pill.className = 'rating-pill';
+  pill.textContent = 'INACTIVE';
+  pill.style.background = 'rgba(255,255,255,0.18)';
+  pill.style.color = '#fff';
+
+  document.getElementById('timer-display').textContent = '00:00';
+}
+
+async function toggleSession() {
+  const endpoint = sessionActive ? '/end' : '/start';
+
+  try {
+    const response = await fetch(outputBaseUrl + endpoint);
+    if (!response.ok) {
+      throw new Error('Request failed');
+    }
+  } catch (err) {
+    console.error('Session toggle failed:', err);
+  }
+}
+
+function updateSessionButton() {
+  const btn = document.getElementById('session-toggle-btn');
+  btn.textContent = sessionActive ? 'Stop Session' : 'Start Session';
+}
 
 /*creates Chart.js scatter chart on the postureChart elemnt */
 const ctx = document.getElementById('postureChart').getContext('2d');
@@ -549,9 +608,8 @@ function normaliseRating(raw) {
   const v = String(raw).trim().toUpperCase();
   if (v === 'GOOD') return 'GOOD';
   if (v === 'OKAY') return 'OKAY';
-  return 'POOR'; // catches "BAD", "POOR", unknown
+  return 'POOR';
 }
-
 </script>
 
 <!-- Firebase SDK (ES module — loads after Chart.js UMD above) 
@@ -588,16 +646,30 @@ let activeSessionId = "";
 onValue(controlRef, (snapshot) => {
   const control = snapshot.val() || {};
   activeSessionId = control.sessionId || "";
+  sessionActive = !!control.active;
 
-  if (control.active && activeSessionId) {
+  updateSessionButton();
+
+  if (sessionActive && activeSessionId) {
     badge.textContent = 'Firebase Live';
     badge.style.background = 'rgba(91,166,104,0.18)';
     badge.style.color = '#3d8a4e';
     note.innerHTML = `Active session: <strong>${activeSessionId}</strong>`;
   } else {
+    badge.textContent = 'Session Inactive';
+    badge.style.background = 'rgba(138,158,123,0.15)';
+    badge.style.color = '#6B7D60';
     note.textContent = 'No active session';
+
+    showInactiveSession();
+    mockData.current = [];
+    chart.data.datasets[0].data = mockData.current;
+    chart.update();
+
+    document.getElementById('good-pct').textContent = '0%';
+    document.getElementById('sessions-count').textContent = '0';
   }
-//NESTED LISTENER -- updates the insight boxes
+
   if (activeSessionId) {
     const sessionRef = ref(db, `sessions_live/${activeSessionId}`);
     onValue(sessionRef, (sessionSnap) => {
@@ -617,6 +689,11 @@ onValue(liveRef, (snapshot) => {
 
   if (!live) {
     note.textContent = 'No live data yet';
+    return;
+  }
+
+  if (!sessionActive || live.status === 'INACTIVE') {
+    showInactiveSession();
     return;
   }
 
