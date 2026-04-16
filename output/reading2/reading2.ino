@@ -19,7 +19,9 @@ const String firebaseBase = "https://iot-posture-monitoring-default-rtdb.firebas
 // local HTTP server on port 80
 WebServer server(80);
 
-const int ledPin = 26;    // warning LED pin (okay/bad status)
+const int REDled = 26;    // poor posture
+const int GREENled = 33;
+const int YELLOWled = 25;
 const int buzzerPin = 27; // audible buzzer pin (bad status)
 const int buttonPin = 14;
 bool lastButtonState = HIGH;
@@ -164,7 +166,7 @@ void addTimelinePoint(const String& status, int score) {
 
 void applyOutputFeedback(const String& status) {
   if (status == "BAD") {
-    digitalWrite(ledPin, HIGH);
+    digitalWrite(REDled, HIGH);
 
     unsigned long currentMillis = millis();
     if (currentMillis - lastBuzzToggle >= 600) {
@@ -173,11 +175,11 @@ void applyOutputFeedback(const String& status) {
       digitalWrite(buzzerPin, buzzerState ? HIGH : LOW);
     }
   } else if (status == "OKAY") {
-    digitalWrite(ledPin, HIGH);
+    digitalWrite(YELLOWled, HIGH);
     digitalWrite(buzzerPin, LOW);
     buzzerState = false;
   } else {
-    digitalWrite(ledPin, LOW);
+    digitalWrite(GREENled, LOW);
     digitalWrite(buzzerPin, LOW);
     buzzerState = false;
   }
@@ -236,7 +238,7 @@ void startSession() {
 void stopSession() {
   endCurrentSession();
 
-  digitalWrite(ledPin, LOW);
+  //digitalWrite(ledPin, LOW);
   digitalWrite(buzzerPin, LOW);
   buzzerState = false;
 
@@ -347,7 +349,9 @@ void setup() {
   Serial.begin(115200);
   delay(1000);
 
-  pinMode(ledPin, OUTPUT);
+  pinMode(REDled, OUTPUT);
+  pinMode(GREENled, OUTPUT);
+  pinMode(YELLOWled, OUTPUT);
   pinMode(buzzerPin, OUTPUT);
   pinMode(buttonPin, INPUT_PULLUP);
 
