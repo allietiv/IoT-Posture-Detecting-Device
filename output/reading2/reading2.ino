@@ -10,8 +10,8 @@ const char* apSSID = "PostureESP";
 const char* apPassword = "12345678";
 
 
-const char* internetSSID = "ufdevice";
-const char* internetPassword = "gogators";
+const char* internetSSID = "dise";
+const char* internetPassword = "esp32meow";
 
 // Firebase Realtime Database URL
 const String firebaseBase = "https://iot-posture-monitoring-default-rtdb.firebaseio.com";
