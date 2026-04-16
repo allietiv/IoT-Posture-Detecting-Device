@@ -395,7 +395,10 @@ const RATINGS = { GOOD: 2, OKAY: 1, POOR: 0 };
 // Simulated live state (gets overwritten upon DB connection)
 let liveState = { rating: 'GOOD', sessionStart: Date.now() };
 let sessionActive = false;
-const outputBaseUrl = "http://192.168.0.168";
+
+// NOTE: no outputBaseUrl anymore — session control now goes through Firebase
+// instead of a direct HTTP call to the output ESP. This sidesteps client-isolation
+// issues on phone hotspots and lets the dashboard work from any network.
 
 // dummy scatter plot data for the day/week/month tabs
 const mockData = {
@@ -466,16 +469,14 @@ function showInactiveSession() {
   document.getElementById('timer-display').textContent = '00:00';
 }
 
-async function toggleSession() {
-  const endpoint = sessionActive ? '/end' : '/start';
-
-  try {
-    const response = await fetch(outputBaseUrl + endpoint);
-    if (!response.ok) {
-      throw new Error('Request failed');
-    }
-  } catch (err) {
-    console.error('Session toggle failed:', err);
+// toggleSession is now defined inside the Firebase module script below
+// and attached to window so this button's onclick can reach it.
+// We only define a stub here so the button doesn't throw before Firebase loads.
+function toggleSession() {
+  if (window.__toggleSession) {
+    window.__toggleSession();
+  } else {
+    console.warn('Firebase not ready yet, please wait a moment and try again.');
   }
 }
 
@@ -615,8 +616,9 @@ function normaliseRating(raw) {
 <!-- Firebase SDK (ES module — loads after Chart.js UMD above) 
  SEPARATE FROM MAIN SCRIPT (in a new tag) and thereby runs after the main script-->
 <script type="module">
-  import { initializeApp }              from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-  import { getDatabase, ref, onValue }  from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+  // Added `set` to the imports so we can write to /control from the browser.
+  import { initializeApp }                   from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+  import { getDatabase, ref, onValue, set }  from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
 
   //API KEYS 
   // should hide these away eventually, but suitable for midpoint demo 
@@ -641,6 +643,35 @@ const liveRef = ref(db, 'live');
 const controlRef = ref(db, 'control');
 
 let activeSessionId = "";
+
+// SESSION TOGGLE: writes directly to Firebase's /control node.
+// The output ESP polls this node periodically and reacts when `active` changes.
+// We attach it to window so the button's inline onclick="toggleSession()" can find it
+// (module-scope functions aren't global by default).
+window.__toggleSession = async function() {
+  try {
+    if (sessionActive) {
+      // End the current session
+      await set(controlRef, {
+        active: false,
+        sessionId: "",
+        startedAt: 0
+      });
+    } else {
+      // Start a new session with a fresh ID
+      const newSessionId = "session_" + Date.now();
+      await set(controlRef, {
+        active: true,
+        sessionId: newSessionId,
+        startedAt: Date.now()
+      });
+      // Track local session-start time for the duration display
+      liveState.sessionStart = Date.now();
+    }
+  } catch (err) {
+    console.error('Failed to update /control in Firebase:', err);
+  }
+};
 
 //LISTENER 1: fires whenever control node changes
 onValue(controlRef, (snapshot) => {
