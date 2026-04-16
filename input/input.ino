@@ -1,3 +1,80 @@
+Lib
+ibb_lib
+Do Not Disturb
+has: image
+Lib — 4/1/2026 3:25 PM
+RECAP OF MEETING
+Libby: deliverables,  I also want to try to comment through our code to help organize our thoughts 
+Lib — 4/1/2026 3:45 PM
+Allie: connect html code to firebase firestore database (put fake data in there)
+Allie Tivvis — 4/2/2026 12:21 PM
+#include <WiFi.h>
+#include <esp_wifi.h>
+
+void setup() {
+  Serial.begin(115200);
+  delay(1000);
+
+  WiFi.mode(WIFI_STA);
+  esp_wifi_start();
+  delay(500);
+
+  Serial.print("ESP32 MAC Address: ");
+  Serial.println(WiFi.macAddress());
+}
+
+void loop() {
+}
+b1gslime — 4/2/2026 1:07 PM
+#include <WiFi.h>
+#include <WiFiClientSecure.h>
+#include <HTTPClient.h>
+#include <WebServer.h>
+
+const char* apSSID = "PostureESP";
+
+reading2.ino
+10 KB
+#include <WiFi.h>
+#include <WiFiClientSecure.h>
+#include <HTTPClient.h>
+#include <WebServer.h>
+
+const char* apSSID = "PostureESP";
+
+reading2.ino
+10 KB
+Luna — 4/2/2026 1:44 PM
+// ============================================================
+//  Adafruit Flex Sensor — ESP32 Test & Analysis Sketch
+//  Wiring: 3.3V → [Flex Sensor] → A0 pin → [10kΩ to GND]
+//  (Voltage divider: flex sensor on top, fixed resistor on bottom)
+// ============================================================
+
+flex_sensor_test.ino
+7 KB
+Luna — 4/3/2026 6:16 AM
+Image
+Lib — 4/14/2026 11:46 AM
+Attachment file type: acrobat
+MPU-6050 Product Specification.pdf
+2.27 MB
+Lib — 4/14/2026 11:56 AM
+Attachment file type: document
+Circuit Schematics.docx
+409.53 KB
+b1gslime — 11:37 AM
+the input code with the tweaks from tuesday.  I was gonna make a pr, but i think libby might need some more contributions to the github
+// input.ino - tracks and analyzes accelerometer and flex sensor data
+// DEMO DAY INPUT CODE
+
+#include <Adafruit_MPU6050.h>
+#include <Adafruit_Sensor.h>
+#include <Wire.h>
+
+posture_input4-14.ino
+9 KB
+﻿
 // input.ino - tracks and analyzes accelerometer and flex sensor data
 // DEMO DAY INPUT CODE
 
@@ -7,6 +84,7 @@
 #include <WiFi.h>
 #include <HTTPClient.h>
 #define sensorPin 34
+#define buttonPin 0
 
 // wi-fi credentials and output server URL
 const char* ssid = "PostureESP";
@@ -16,7 +94,7 @@ const char* outputServer = "http://192.168.4.1/status?value=";
 Adafruit_MPU6050 mpu;
 
 // PIN ASSIGNMENTS
-const int buttonPin = 2;  // reset button
+//const int buttonPin = 2;  // reset button
 int buttonState = 0;
 
 // baseline readings for accelerometer
@@ -47,16 +125,16 @@ float baseFlex = 0;
 sensors_event_t a,g,temp;
 
 // thresholds for sensors
-int goodThreshold = 5;
-int okayThreshold = 10;
+float goodThreshold = 10;
+float okayThreshold = 20;
 float VCC = 3.3; //corresponds to amount of volts
 float R2 = 10000; // 10K resistor
-float sensorMinRes = 6800; //might need adjustment to find value when flat
-float sensorMaxRes = 9200; //might need adjustmentto find value when at 90 degrees
+float sensorMinRes = 1500; //might need adjustment to find value when flat
+float sensorMaxRes = 3500; //might need adjustmentto find value when at 90 degrees
 
 // timing variables for sending data to output ESP
 unsigned long lastSendTime = 0;
-const unsigned long sendInterval = 2000;   // resend every 2 sec even if same status
+const unsigned long sendInterval = 30000;   // resend every 2 sec even if same status
 const unsigned long readDelay = 250;       // sensor read speed
 String lastStatus = "";
 
@@ -64,36 +142,56 @@ String lastStatus = "";
 String classifyPosture(float totVals) { //if 0 == good, 1 == ok, 2==bad
   Serial.print("totvals: ");
   Serial.println(totVals);
-  if (totVals <= 0.5) {
+  if (totVals < 1) {
     return "GOOD";
-  } else if (totVals <= 1.5) {
+  } else if (totVals < 2) {
     return "OKAY";
   } else {
     return "BAD";
   }
 }
-
+//.20
+//.15
 // FUNCTION - takes individual sensor value and classifies as good/ok/bad, returns int for easier averaging
-int classifyPostureINT(float sensorValue, int gryoFlex) { //second val to signal if gyro or flex classification
+int classifyPostureINT(float sensorValue, int gyroFlex) { //second val to signal if gyro or flex classification
   Serial.print("snesVal: ");
   Serial.println(sensorValue);
-  if (sensorValue <= goodThreshold) {
+  if (!gyroFlex){
+    Serial.print("Sensor Gyro: ");
+    Serial.print(sensorValue);
+    Serial.print(" "),
+    Serial.println(goodThreshold/100);
+    Serial.println(okayThreshold/100);
+    if (sensorValue <= goodThreshold/100) {
+      return 0;
+    } else if (sensorValue <= okayThreshold/100) {
+      return 1;
+    } else {
+      return 2;
+    }
+  }
+  else{
+    if (sensorValue <= goodThreshold) {
     return 0;
   } else if (sensorValue <= okayThreshold) {
     return 1;
   } else {
     return 2;
   }
+  }
 }
 
 // FUNCTION - sets baseline values for accelerometer and gyroscope
 void baseline(){
-  baseAccX = a.acceleration.x;
-  baseAccY = a.acceleration.y;
-  baseAccZ = a.acceleration.z;
-  baseGyroX = g.gyro.x;
-  baseGyroY = g.gyro.y;
-  baseGyroZ = g.gyro.z;
+  Serial.println("in baseline");
+  baseAccX  = currAccX;
+  baseAccY = currAccY;
+  baseAccZ = currAccZ;
+  baseGyroX = currGyroX;
+  baseGyroY = currGyroY;
+  baseGyroZ = currGyroZ;
+  baseFlex = currFlex;
+
 }
 
 // FUNCTION - joins the WiFi network of the output ESP
@@ -161,7 +259,7 @@ void setup() {
   Serial.print("mac: ");
   Serial.println(WiFi.macAddress());
 
-  pinMode(buttonPin, INPUT);
+  pinMode(buttonPin, INPUT_PULLUP);
   pinMode(sensorPin, INPUT);
 
   mpu.setAccelerometerRange(MPU6050_RANGE_2_G); //can be changed to higher g for more range of motion.
@@ -197,7 +295,8 @@ void loop() {
 
   // convert raw ADC -> 0-100 flex percentage
   float ADCVoltage = (ADCRaw * VCC) / 4095;
-  float Resistance = R2 * (VCC / ADCVoltage - 1);
+  Serial.println(ADCVoltage);
+  float Resistance = R2 * (ADCVoltage / (VCC - ADCVoltage));
 
   Serial.print("resistance: ");
   Serial.println(Resistance);
@@ -208,9 +307,9 @@ void loop() {
   Serial.println(currFlex);
 
   // debug for accel and gyro values
-  Serial.println(a.acceleration.x);
-  Serial.println(a.acceleration.y);
-  Serial.println(a.acceleration.z);
+  Serial.println(currAccX- baseAccX);
+  Serial.println(currAccY - baseAccY);
+  Serial.println(currAccZ - baseAccZ);
   Serial.print("X: ");
   Serial.println(g.gyro.x);
   Serial.print("Y: ");
@@ -225,11 +324,12 @@ void loop() {
   if (buttonState == LOW){
     baseline();
   }
-  //Serial.println("moved");
   unsigned long now = millis();
-  bool refreshNeeded = (now - lastSendTime >= sendInterval);
+  //Serial.println("moved");
+
+  //bool refreshNeeded = (now - lastSendTime >= sendInterval);
   //if accel notices movement, it checks with gyro to check for orientation diffs
-  if ((fabs(currAccX - baseAccX) > 0.1) || (fabs(currAccY - baseAccY) > 0.1) || (fabs(currAccZ - baseAccZ) > 0.1) || refreshNeeded){ //for +/- errors
+  if (fabs(currAccX - baseAccX) > 0.1 || fabs(currAccY - baseAccY) > 0.1 ||  fabs(currAccZ - baseAccZ) > 0.1){ //for +/- errors
       Serial.print("X in: ");
       Serial.println(g.gyro.x);
       Serial.print("Y in : ");
@@ -239,24 +339,36 @@ void loop() {
       totDiff = fabs(currGyroX - baseGyroX) + fabs(currGyroY - baseGyroY) + fabs(currGyroZ - baseGyroZ); //values for good/great might need scaling
       Serial.print("totDiff: ");
       Serial.println(totDiff);
-      currStatGyroINT = classifyPostureINT(totDiff, 0);
       Serial.println("moved");
+      if (totDiff > 0.05) {
+      currStatGyroINT = classifyPostureINT(totDiff - 0.05 , 0);
+      Serial.print("gyro state: ");
+      Serial.println(currStatGyroINT);
+
+      }
   }
   else{
     Serial.println("no change in accel/gyro");
   }
   Serial.print("curr-b flex: ");
   Serial.println(currFlex-baseFlex);
-  if (fabs(currFlex-baseFlex) > 2){//again the "2" might need changing
-        currStatFlexINT = classifyPostureINT(fabs(currFlex-baseFlex), 1);
+  if (fabs(currFlex-baseFlex) > 4){//again the "2" might need changing
+        currStatFlexINT = classifyPostureINT(fabs(currFlex-baseFlex) - 4, 1); //compares diff minus (+/-)
+        Serial.print("flex state: ");
+        Serial.println(currStatFlexINT);
   }
 
   // average gyro and flex classifications for overall posture status
   Serial.println((currStatGyroINT + currStatFlexINT)/2);
-  currStat = classifyPosture((currStatGyroINT + currStatFlexINT)/2);
-  sendStatusToOutput(currStat);
+  bool refreshNeeded = (now - lastSendTime >= sendInterval);
+  String classification = classifyPosture((currStatGyroINT + currStatFlexINT)/2);
+  Serial.println(classification);
+  Serial.println(lastStatus);
+  if (refreshNeeded || classification != lastStatus ){
+      lastStatus = classification; //changes last status to curr status
+      sendStatusToOutput(lastStatus); //sends curr status
+      lastSendTime = now;
+  }
   Serial.println(currStat);
-  lastStatus = currStat;
-  lastSendTime = now;
   delay(2000); 
 }
