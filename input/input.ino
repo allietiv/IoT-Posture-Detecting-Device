@@ -4,16 +4,6 @@
 #include <Adafruit_MPU6050.h>
 #include <Adafruit_Sensor.h>
 #include <Wire.h>
-
-posture_input4-14.ino
-9 KB
-﻿
-// input.ino - tracks and analyzes accelerometer and flex sensor data
-// DEMO DAY INPUT CODE
-
-#include <Adafruit_MPU6050.h>
-#include <Adafruit_Sensor.h>
-#include <Wire.h>
 #include <WiFi.h>
 #include <HTTPClient.h>
 #define sensorPin 34
