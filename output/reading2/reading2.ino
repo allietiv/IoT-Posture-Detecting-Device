@@ -21,7 +21,7 @@ WebServer server(80);
 const int REDled = 26;    // poor posture
 const int GREENled = 33;
 const int YELLOWled = 25;
-const int buzzerPin = 27; // audible buzzer pin (bad status)
+const int buzzerPin = 27;
 const int buttonPin = 14;
 bool lastButtonState = HIGH;
 
@@ -380,8 +380,8 @@ void uploadSessionSummaryToFirebase() {
 
 void recordPostureStatus(const String& status) {
   if (!controlState.active) {
-    Serial.println("[STATUS] Ignored because no session is active");
-    return;
+    Serial.println("[STATUS] No active session, auto-starting one now");
+    startSession();
   }
 
   int score = statusToScore(status);
@@ -518,6 +518,9 @@ void setup() {
   });
 
   setLiveInactive();
+  startSession();
+  Serial.println("[SETUP] Auto-started session so live readings work without button");
+
   server.begin();
   Serial.println("[SETUP] Server started");
 
@@ -542,31 +545,9 @@ void setup() {
 }
 
 void loop() {
-  // keep server running & listening
-  bool currentButtonState = digitalRead(buttonPin);
-
-  if (lastButtonState == HIGH && currentButtonState == LOW) {
-    delay(150);
-
-    if (controlState.active) {
-      Serial.println("[BUTTON] Press detected: ending session");
-      stopSession();
-    } else {
-      Serial.println("[BUTTON] Press detected: starting session");
-      startSession();
-    }
-
-    while (digitalRead(buttonPin) == LOW) {
-      server.handleClient();
-      delay(10);
-    }
-  }
-
-  lastButtonState = currentButtonState;
-
   server.handleClient();
 
-  // do firebase uploads AFTER responding to the input request (so that if there is a problem with internet connectivity, user can still get live ratings from the input uC)
+  // do firebase uploads AFTER responding to the input request
   if (pendingLiveUpload) {
     Serial.println("[LOOP] Uploading pending live data...");
     uploadLiveToFirebase();

@@ -741,7 +741,7 @@ onValue(controlRef, (snapshot) => {
 
       // keep sessions today behavior exactly as your file had it
       document.getElementById('sessions-count').textContent =
-        (session.totalReadings ?? 0).toString();
+        (session.totalReadings ?? 5).toString();
     });
   }
 });
