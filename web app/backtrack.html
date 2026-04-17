@@ -396,6 +396,17 @@ const RATINGS = { GOOD: 2, OKAY: 1, POOR: 0 };
 let liveState = { rating: 'GOOD', sessionStart: Date.now() };
 let sessionActive = false;
 
+// ADDED: only for percentage behavior
+let selectedTab = 'current';
+let totalSamples = 0;
+let goodSamples = 0;
+
+const tabPercentages = {
+  day: 62,
+  week: 58,
+  month: 64
+};
+
 // NOTE: no outputBaseUrl anymore — session control now goes through Firebase
 // instead of a direct HTTP call to the output ESP. This sidesteps client-isolation
 // issues on phone hotspots and lets the dashboard work from any network.
@@ -447,8 +458,16 @@ function applyRating(rating) {
   pill.className = `rating-pill ${cls}`;
   pill.textContent = rating;
 
-  const pcts = { GOOD: '62%', OKAY: '44%', POOR: '31%' };
-  document.getElementById('good-pct').textContent = pcts[rating];
+  // ADDED: current tab percentage only
+  if (selectedTab === "current") {
+    totalSamples++;
+    if (rating === "GOOD") goodSamples++;
+
+    const pct = totalSamples === 0 ? 0 :
+      Math.round((goodSamples / totalSamples) * 100);
+
+    document.getElementById('good-pct').textContent = pct + "%";
+  }
 }
 // Initial placeholder until Firebase responds
 applyRating(liveState.rating);
@@ -567,6 +586,8 @@ const tabLabels = {
 };
 
 function switchTab(tab, el) {
+  selectedTab = tab;
+
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   el.classList.add('active');
 
@@ -577,6 +598,16 @@ function switchTab(tab, el) {
   chart.update();
 
   document.getElementById('summary-trend').textContent = cfg.trend;
+
+  // ADDED: update percentage when switching tabs
+  if (tab === "current") {
+    const pct = totalSamples === 0 ? 0 :
+      Math.round((goodSamples / totalSamples) * 100);
+    document.getElementById('good-pct').textContent = pct + "%";
+  } else {
+    document.getElementById('good-pct').textContent =
+      (tabPercentages[tab] || 0) + "%";
+  }
 }
 
 /* hardcoding data for time of day bars (morning, midday, evening, night*/
@@ -697,6 +728,8 @@ onValue(controlRef, (snapshot) => {
     chart.data.datasets[0].data = mockData.current;
     chart.update();
 
+    totalSamples = 0;
+    goodSamples = 0;
     document.getElementById('good-pct').textContent = '0%';
     document.getElementById('sessions-count').textContent = '0';
   }
@@ -706,9 +739,7 @@ onValue(controlRef, (snapshot) => {
     onValue(sessionRef, (sessionSnap) => {
       const session = sessionSnap.val() || {};
 
-      document.getElementById('good-pct').textContent =
-        `${session.goodPercentage ?? 0}%`;
-
+      // keep sessions today behavior exactly as your file had it
       document.getElementById('sessions-count').textContent =
         (session.totalReadings ?? 0).toString();
     });
