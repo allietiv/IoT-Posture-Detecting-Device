@@ -10,8 +10,8 @@ const char* apSSID = "PostureESP";
 const char* apPassword = "12345678";
 
 
-const char* internetSSID = "dise";
-const char* internetPassword = "esp32meow";
+const char* internetSSID = "ufdevice";
+const char* internetPassword = "gogators";
 
 // Firebase Realtime Database URL
 const String firebaseBase = "https://iot-posture-monitoring-default-rtdb.firebaseio.com";
@@ -349,29 +349,46 @@ void setup() {
   Serial.begin(115200);
   delay(1000);
 
+  // pin setup
   pinMode(REDled, OUTPUT);
   pinMode(GREENled, OUTPUT);
   pinMode(YELLOWled, OUTPUT);
   pinMode(buzzerPin, OUTPUT);
   pinMode(buttonPin, INPUT_PULLUP);
 
-  WiFi.mode(WIFI_STA);
+  // --- WIFI: AP + STA MODE ---
+  WiFi.mode(WIFI_AP_STA);
+
+  // Start Access Point (for input ESP to connect to)
+  WiFi.softAP(apSSID, apPassword);
+
+  Serial.print("AP IP (for input ESP): ");
+  Serial.println(WiFi.softAPIP());  // usually 192.168.4.1
+
+  // Connect to internet (to send data to firebase)
   WiFi.begin(internetSSID, internetPassword);
+  Serial.print("Connecting to WiFi");
 
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
+    Serial.print(".");
   }
 
+  Serial.println();
+  Serial.print("STA IP (internet): ");
   Serial.println(WiFi.localIP());
-  //server routes 
 
+  // --- SERVER ROUTES ---
   server.on("/", handleRoot);
   server.on("/start", handleStart);
   server.on("/end", handleEnd);
   server.on("/status", handleStatusUpdate);
 
   setLiveInactive();
+
+  // start server
   server.begin();
+  Serial.println("Server started");
 }
 
 void loop() {
