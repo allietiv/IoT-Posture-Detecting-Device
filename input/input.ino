@@ -37,6 +37,10 @@ float baseGyroZ = 0;
 float currGyroX = 0;
 float currGyroY = 0;
 float currGyroZ = 0;
+float basePitch = 0;
+float baseRoll = 0;  
+float pitch = 0;
+float roll = 0;
 // sum of gyro diffs
 float totDiff= 0;
 
@@ -85,9 +89,15 @@ int classifyPostureINT(float sensorValue, int gyroFlex) { //second val to signal
     Serial.println(" "),
     Serial.println(goodThreshold/100);
     Serial.println(okayThreshold/100);
-    if (sensorValue <= goodThreshold/100) {
+    if (sensorValue <= (goodThreshold - 4)) {
+    Serial.print("Sensor Gyro 0: ");
+    Serial.println(sensorValue);
+    Serial.println(goodThreshold - 4);
       return 0;
-    } else if (sensorValue <= okayThreshold/100) {
+    } else if (sensorValue <= (okayThreshold-5)) {
+      Serial.print("Sensor Gyro 1: ");
+      Serial.println(sensorValue);
+      Serial.println(okayThreshold - 5);
       return 1;
     } else {
       return 2;
@@ -114,6 +124,8 @@ void baseline(){
   baseGyroY = currGyroY;
   baseGyroZ = currGyroZ;
   baseFlex = currFlex;
+  basePitch = pitch;
+  baseRoll = roll;  
 
 }
 
@@ -220,10 +232,8 @@ void loop() {
   currGyroX = g.gyro.x;
   currGyroY = g.gyro.y;
   currGyroZ = g.gyro.z;
-  float pitch = atan2(currAccX, sqrt(currAccY*currAccY + currAccZ*currAccZ)) * 180 / PI;
-  float roll  = atan2(currAccY, sqrt(currAccX*currAccX + currAccZ*currAccZ)) * 180 / PI;
-  float basePitch = pitch;
-  float baseRoll = roll;  
+  pitch = atan2(currAccX, sqrt(currAccY*currAccY + currAccZ*currAccZ)) * 180 / PI;
+  roll  = atan2(currAccY, sqrt(currAccX*currAccX + currAccZ*currAccZ)) * 180 / PI;
   float dp = pitch - basePitch;
   float dr = roll - baseRoll;
 
@@ -294,6 +304,14 @@ void loop() {
   //Serial.print("curr-b flex: ");
   //Serial.println(currFlex-baseFlex);
   float totDiff = sqrt(dp*dp + dr*dr);
+  Serial.print("Tot diff: ");
+  Serial.println(totDiff);
+  if (totDiff >= 4){
+    currStatGyroINT = classifyPostureINT(totDiff - 4, 0);
+            //Serial.print("flex state: ");
+        //Serial.println(currStatFlexINT);
+
+  }
   if (fabs(currFlex-baseFlex) > 4){//again the "2" might need changing
         currStatFlexINT = classifyPostureINT(fabs(currFlex-baseFlex) - 4, 1); //compares diff minus (+/-)
         //Serial.print("flex state: ");
@@ -308,7 +326,6 @@ void loop() {
   Serial.println(lastStatus);
   if (refreshNeeded || classification != lastStatus ){
       lastStatus = classification; //changes last status to curr status
-      wh
       sendStatusToOutput(lastStatus); //sends curr status
       lastSendTime = now;
   }
