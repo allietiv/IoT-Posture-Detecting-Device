@@ -10,8 +10,8 @@
 #define buttonPin 0
 
 // wi-fi credentials and output server URL
-const char* ssid = "dise";
-const char* password = "esp32meow";
+const char* ssid = "ufdevice";
+const char* password = "gogators";
 const char* outputServer = "http://192.168.4.1/status?value=";
 
 Adafruit_MPU6050 mpu;
