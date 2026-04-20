@@ -10,8 +10,8 @@
 #define buttonPin 0
 
 // wi-fi credentials and output server URL
-const char* ssid = "ufdevice";
-const char* password = "gogators";
+const char* ssid = "PostureESP";
+const char* password = "12345678";
 const char* outputServer = "http://192.168.4.1/status?value=";
 
 Adafruit_MPU6050 mpu;
@@ -37,6 +37,10 @@ float baseGyroZ = 0;
 float currGyroX = 0;
 float currGyroY = 0;
 float currGyroZ = 0;
+float basePitch = 0;
+float baseRoll = 0;  
+float pitch = 0;
+float roll = 0;
 // sum of gyro diffs
 float totDiff= 0;
 
@@ -82,12 +86,18 @@ int classifyPostureINT(float sensorValue, int gyroFlex) { //second val to signal
   if (!gyroFlex){
     Serial.print("Sensor Gyro: ");
     Serial.print(sensorValue);
-    Serial.print(" "),
+    Serial.println(" "),
     Serial.println(goodThreshold/100);
     Serial.println(okayThreshold/100);
-    if (sensorValue <= goodThreshold/100) {
+    if (sensorValue <= (goodThreshold - 4)) {
+    Serial.print("Sensor Gyro 0: ");
+    Serial.println(sensorValue);
+    Serial.println(goodThreshold - 4);
       return 0;
-    } else if (sensorValue <= okayThreshold/100) {
+    } else if (sensorValue <= (okayThreshold-5)) {
+      Serial.print("Sensor Gyro 1: ");
+      Serial.println(sensorValue);
+      Serial.println(okayThreshold - 5);
       return 1;
     } else {
       return 2;
@@ -114,6 +124,8 @@ void baseline(){
   baseGyroY = currGyroY;
   baseGyroZ = currGyroZ;
   baseFlex = currFlex;
+  basePitch = pitch;
+  baseRoll = roll;  
 
 }
 
@@ -143,24 +155,29 @@ void sendStatusToOutput(const String& status) {
   HTTPClient http;
   String url = String(outputServer) + status;
 
+  Serial.print("Sending request to: ");
+  Serial.println(url);
+
   http.begin(url);
-  int httpCode = http.GET();  // send GET request
+  int httpCode = http.GET();
 
   Serial.print("Sent status: ");
   Serial.print(status);
   Serial.print(" | HTTP response: ");
   Serial.println(httpCode);
 
-  if (httpCode > 0) {                    // successful response              
+  if (httpCode > 0) {
     String payload = http.getString();
     Serial.println("Response:");
     Serial.println(payload);
-  } else {                              // error in sending request
-    Serial.println("Failed to send request");
+  } else {
+    Serial.print("Failed to send request, error: ");
+    Serial.println(http.errorToString(httpCode));
   }
 
-  http.end(); // free resources used by HTTPClient
-}
+  http.end();
+}// free resources used by HTTPClient
+
 
 // setup function runs at startup / reset
 void setup() {
@@ -169,7 +186,7 @@ void setup() {
   // pinMode(powerPin, OUTPUT);
   // digitalWrite(groundPin, LOW);
   // digitalWrite(powerPin, HIGH);
-  //connectToOutputESP();
+  connectToOutputESP();
 
   // start I2C on SDA=21, SCL=22
   Wire.begin(21, 22);
@@ -179,8 +196,8 @@ void setup() {
     delay(500);
   }
 
-  Serial.print("mac: ");
-  Serial.println(WiFi.macAddress());
+  // Serial.print("mac: ");
+  // Serial.println(WiFi.macAddress());
 
   pinMode(buttonPin, INPUT_PULLUP);
   pinMode(sensorPin, INPUT);
@@ -204,8 +221,8 @@ void loop() {
   analogSetAttenuation(ADC_11db);  
 
   int ADCRaw = analogRead(sensorPin);
-  Serial.print("ADCRAW: ");
-  Serial.println(ADCRaw);
+  // Serial.print("ADCRAW: ");
+  // Serial.println(ADCRaw);
 
   // read MPU
   mpu.getEvent(&a,&g,&temp);
@@ -215,19 +232,24 @@ void loop() {
   currGyroX = g.gyro.x;
   currGyroY = g.gyro.y;
   currGyroZ = g.gyro.z;
+  pitch = atan2(currAccX, sqrt(currAccY*currAccY + currAccZ*currAccZ)) * 180 / PI;
+  roll  = atan2(currAccY, sqrt(currAccX*currAccX + currAccZ*currAccZ)) * 180 / PI;
+  float dp = pitch - basePitch;
+  float dr = roll - baseRoll;
+
 
   // convert raw ADC -> 0-100 flex percentage
   float ADCVoltage = (ADCRaw * VCC) / 4095;
-  Serial.println(ADCVoltage);
+  //Serial.println(ADCVoltage);
   float Resistance = R2 * (ADCVoltage / (VCC - ADCVoltage));
 
-  Serial.print("resistance: ");
-  Serial.println(Resistance);
+  // Serial.print("resistance: ");
+  // Serial.println(Resistance);
 
   // map resistance range
   currFlex = (Resistance - sensorMinRes) * 100.0 / (sensorMaxRes - sensorMinRes); //value between 0-100
-  Serial.print("curflex: ");
-  Serial.println(currFlex);
+  // Serial.print("curflex: ");
+  // Serial.println(currFlex);
 
   // debug for accel and gyro values
   Serial.println(currAccX- baseAccX);
@@ -252,37 +274,52 @@ void loop() {
 
   //bool refreshNeeded = (now - lastSendTime >= sendInterval);
   //if accel notices movement, it checks with gyro to check for orientation diffs
-  if (fabs(currAccX - baseAccX) > 0.1 || fabs(currAccY - baseAccY) > 0.1 ||  fabs(currAccZ - baseAccZ) > 0.1){ //for +/- errors
-      Serial.print("X in: ");
-      Serial.println(g.gyro.x);
-      Serial.print("Y in : ");
-      Serial.println(g.gyro.y);
-      Serial.print("Z in: ");
-      Serial.println(g.gyro.z);
-      totDiff = fabs(currGyroX - baseGyroX) + fabs(currGyroY - baseGyroY) + fabs(currGyroZ - baseGyroZ); //values for good/great might need scaling
-      Serial.print("totDiff: ");
-      Serial.println(totDiff);
-      Serial.println("moved");
-      if (totDiff > 0.05) {
-      currStatGyroINT = classifyPostureINT(totDiff - 0.05 , 0);
-      Serial.print("gyro state: ");
-      Serial.println(currStatGyroINT);
+  // if (fabs(currAccX - baseAccX) > 0.1 || fabs(currAccY - baseAccY) > 0.1 ||  fabs(currAccZ - baseAccZ) > 0.1){ //for +/- errors
+  //     Serial.print("X curr: ");
+  //     Serial.println(currGyroX);
+  //     Serial.print("X base: ");
+  //     Serial.println(baseGyroX);
+  //     Serial.print("Y curr : ");
+  //     Serial.println(currGyroY);
+  //     Serial.print("Y base : ");
+  //     Serial.println(baseGyroY);
+  //     Serial.print("Z curr: ");
+  //     Serial.println(currGyroZ);
+  //     Serial.print("Z base: ");
+  //     Serial.println(baseGyroZ);
+  //     totDiff = totDiff = sqrt(pow(currGyroX - baseGyroX, 2) + pow(currGyroY - baseGyroY, 2) + pow(currGyroZ - baseGyroZ, 2)); //values for good/great might need scaling
+  //     Serial.print("totDiff: ");
+  //     Serial.println(totDiff);
+  //     Serial.println("moved");
+  //     if (totDiff > 0.05) {
+  //     currStatGyroINT = classifyPostureINT(totDiff - 0.05 , 0);
+  //     Serial.print("gyro state: ");
+  //     Serial.println(currStatGyroINT);
 
-      }
+  //     }
+  // }
+  // else{
+  //   Serial.println("no change in accel/gyro");
+  // }
+  //Serial.print("curr-b flex: ");
+  //Serial.println(currFlex-baseFlex);
+  float totDiff = sqrt(dp*dp + dr*dr);
+  Serial.print("Tot diff: ");
+  Serial.println(totDiff);
+  if (totDiff >= 4){
+    currStatGyroINT = classifyPostureINT(totDiff - 4, 0);
+            //Serial.print("flex state: ");
+        //Serial.println(currStatFlexINT);
+
   }
-  else{
-    Serial.println("no change in accel/gyro");
-  }
-  Serial.print("curr-b flex: ");
-  Serial.println(currFlex-baseFlex);
   if (fabs(currFlex-baseFlex) > 4){//again the "2" might need changing
         currStatFlexINT = classifyPostureINT(fabs(currFlex-baseFlex) - 4, 1); //compares diff minus (+/-)
-        Serial.print("flex state: ");
-        Serial.println(currStatFlexINT);
+        //Serial.print("flex state: ");
+        //Serial.println(currStatFlexINT);
   }
 
   // average gyro and flex classifications for overall posture status
-  Serial.println((currStatGyroINT + currStatFlexINT)/2);
+  //Serial.println((currStatGyroINT + currStatFlexINT)/2);
   bool refreshNeeded = (now - lastSendTime >= sendInterval);
   String classification = classifyPosture((currStatGyroINT + currStatFlexINT)/2);
   Serial.println(classification);
@@ -294,4 +331,8 @@ void loop() {
   }
   Serial.println(currStat);
   delay(2000); 
+  Serial.println();
+  Serial.println();
+  Serial.println();
 }
+
