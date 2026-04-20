@@ -454,7 +454,10 @@ function applyRating(rating) {
   const pill = document.getElementById('rating-pill');
   const cls  = rating.toLowerCase();
 
+  dot.style.background = "";
+  dot.style.boxShadow = "";
   dot.className  = `live-dot ${cls}`;
+  console.log('dot name: ', dot.className);
   pill.className = `rating-pill ${cls}`;
   pill.textContent = rating;
 
@@ -649,7 +652,7 @@ function normaliseRating(raw) {
 <script type="module">
   // Added `set` to the imports so we can write to /control from the browser.
   import { initializeApp }                   from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-  import { getDatabase, ref, onValue, set }  from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+  import { getDatabase, ref, onValue, set, get }  from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
 
   //API KEYS 
   // should hide these away eventually, but suitable for midpoint demo 
@@ -696,6 +699,11 @@ window.__toggleSession = async function() {
         sessionId: newSessionId,
         startedAt: Date.now()
       });
+      const p = await get(ref(db, 'live/status'));
+      const rating = normaliseRating(p.val());
+      
+
+      applyRating(rating);
       // Track local session-start time for the duration display
       liveState.sessionStart = Date.now();
     }
@@ -703,7 +711,6 @@ window.__toggleSession = async function() {
     console.error('Failed to update /control in Firebase:', err);
   }
 };
-
 //LISTENER 1: fires whenever control node changes
 onValue(controlRef, (snapshot) => {
   const control = snapshot.val() || {};
@@ -741,7 +748,7 @@ onValue(controlRef, (snapshot) => {
 
       // keep sessions today behavior exactly as your file had it
       document.getElementById('sessions-count').textContent =
-        (session.totalReadings ?? 5).toString();
+        (session.totalReadings ?? 0).toString();
     });
   }
 });
